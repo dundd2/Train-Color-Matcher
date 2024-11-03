@@ -4,7 +4,7 @@
 This project is my first attempt at creating an executable (.exe) file from a Python script, showcasing various programming skills for my portfolio. Before this project, I had no experience in converting Python code into an executable format. The inspiration came from a childhood memory of playing a similar game that left a lasting impression, and I wanted to recreate that enjoyable experience.
 
 ## Game Description
-The Train Color Matching Game is where players match trains of the same color. Features include:
+The Train Color Matching Game is where players match trains of the same colour. Features include:
 
 - Multiple game states (Menu, Playing, Game Over)
 - Light/dark theme options
@@ -51,8 +51,8 @@ To convert the Python script into an executable file, I used the following steps
 
 ### How to Play
 1. Start the game by clicking the "Start Game" button
-2. Match the train colors from left to right
-3. Click on the colored train at the bottom that matches the leftmost train on the track
+2. Match the train colours from left to right
+3. Click on the coloured train at the bottom that matches the leftmost train on the track
 4. Score points for correct matches
 5. The game ends when all trains are matched
 
@@ -68,7 +68,7 @@ To convert the Python script into an executable file, I used the following steps
 - **Dynamic Background**:
   - Moving clouds in both themes
   - Twinkling stars in dark mode
-  - Decorative trees for environment
+  - Decorative trees for the environment
 
 ### Code Structure
 - **Main Classes**:
