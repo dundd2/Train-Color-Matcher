@@ -1,33 +1,37 @@
 # Train Color Matching Game
+![Screenshot](https://github.com/dundd2/Train-Color-Matcher/blob/main/Screenshot/Screenshot%20(1).png)
+## Project Background
+This project is my first attempt at creating an executable (.exe) file from a Python script, showcasing various programming skills for my portfolio. Before this project, I had no experience in converting Python code into an executable format. The inspiration came from a childhood memory of playing a similar game that left a lasting impression, and I wanted to recreate that enjoyable experience.
 
-## Introduction
+## Game Description
+The Train Color Matching Game is where players match trains of the same color. Features include:
 
-This project showcases my skills in developing a Python application using Pygame. It is part of my portfolio and represents my first attempt at creating an executable (.exe) file from a Python script. Prior to this, I had no experience in converting Python code into an executable format. The idea for this game stems from a childhood memory of a similar game that I found incredibly fun, and I wanted to recreate that experience.
+- Multiple game states (Menu, Playing, Game Over)
+- Light/dark theme options
+- Interactive buttons with hover effects
+- Dynamic background elements (trees, clouds, stars)
 
-## About the Game
+## Screenshot
+![Screenshot](https://github.com/dundd2/Train-Color-Matcher/blob/main/Screenshot/Screenshot%20(2).png)
+![Screenshot](https://github.com/dundd2/Train-Color-Matcher/blob/main/Screenshot/Screenshot%20(3).png)\
+![Screenshot](https://github.com/dundd2/Train-Color-Matcher/blob/main/Screenshot/Screenshot%20(4).png)
+![Screenshot](https://github.com/dundd2/Train-Color-Matcher/blob/main/Screenshot/Screenshot%20(5).png)
+![Screenshot](https://github.com/dundd2/Train-Color-Matcher/blob/main/Screenshot/Screenshot%20(6).png)
+![Screenshot](https://github.com/dundd2/Train-Color-Matcher/blob/main/Screenshot/Screenshot%20(7).png)
 
-The Train Color Matching Game is a simple yet engaging game where players match the colors of trains. The game features:
+## Technical Skills Demonstrated
+- Python programming fundamentals
+- Pygame library implementation
+- Particle effect systems
+- State management
+- UI/UX design
+- File handling and resource management
 
-- **Menu, Playing, and Game Over States**: The game transitions between different states, providing a complete gaming experience.
-- **Sound Effects and Background Music**: The game includes various sound effects and background music to enhance the player experience.
-- **Light and Dark Themes**: Players can switch between light and dark themes for a better visual experience.
-- **Interactive Buttons**: Modern buttons with hover effects and particle animations.
-- **Dynamic Background Elements**: Trees, clouds, and stars that add to the visual appeal of the game.
 
-## Technologies Used
-
-- **Python**: The core programming language used for the game logic.
-- **Pygame**: A set of Python modules designed for writing video games, used for rendering graphics and handling game events.
-- **Sound Management**: Implemented using Pygame's mixer module to handle sound effects and background music.
-- **Particle System**: Used for creating visual effects like button hover animations.
-
-## Features
-
-- **Train Matching**: Players match the colors of trains to score points.
-- **Sound Effects**: Correct and wrong matches trigger different sound effects.
-- **Theme Toggle**: Switch between light and dark themes.
-- **Dynamic Background**: Includes moving clouds and glowing stars in dark mode.
-- **High Score Tracking**: Keeps track of the highest score achieved.
+## Development Tools
+- Python: Core programming language
+- Pygame: Game development library
+- PyInstaller: Executable creation tool
 
 ## Creating the Executable
 
@@ -43,6 +47,45 @@ To convert the Python script into an executable file, I used the following steps
     ```
 3. **Distribute the Executable**: The generated `.exe` file can be found in the `dist` directory and can be shared with others.
 
-## Conclusion
+## Gameplay Instructions
 
-This project not only demonstrates my ability to develop a complete game using Python and Pygame but also my capability to package and distribute the application as an executable file. It has been a rewarding experience, and I hope you enjoy playing the Train Color Matching Game as much as I enjoyed creating it.
+### How to Play
+1. Start the game by clicking the "Start Game" button
+2. Match the train colors from left to right
+3. Click on the colored train at the bottom that matches the leftmost train on the track
+4. Score points for correct matches
+5. The game ends when all trains are matched
+
+### Controls
+- Mouse Click: Select trains and interact with buttons
+- Theme Toggle: Switch between light and dark modes
+- Mute Button: Toggle sound effects and background music
+
+## Technical Details
+
+### Game Features in Detail
+- **Particle System**: Creates visual effects when buttons are clicked
+- **Dynamic Background**:
+  - Moving clouds in both themes
+  - Twinkling stars in dark mode
+  - Decorative trees for environment
+
+### Code Structure
+- **Main Classes**:
+  - `ModernGame`: Main game controller
+  - `Train`: Train object with movement and rendering
+  - `ModernButton`: Enhanced button with hover effects
+  - `Particle`: Visual effect system
+
+### Animation Systems
+- Train movement animations
+- Button hover effects
+- Particle effects
+- Cloud movement
+- Star twinkling (dark mode)
+
+### Theme System
+- Light and dark theme support
+- Dynamic UI element adaptation
+- Smooth theme transitions
+- Theme-specific visual effects
