@@ -1,6 +1,6 @@
 # Train Color Matching Game
 
-![Screenshot](https://github.com/dundd2/Train-Color-Matcher/blob/main/Screenshot/Screenshot%20(1).png)
+![Screenshot](https://github.com/dundd2/Train-Color-Matcher/blob/main/Screenshot/Screenshot%20(1).gif)
 
 ## Project Background
 
@@ -20,9 +20,7 @@ The Train Color Matching Game is where players match trains of the same colour. 
 ![Screenshot](https://github.com/dundd2/Train-Color-Matcher/blob/main/Screenshot/Screenshot%20(2).png)
 ![Screenshot](https://github.com/dundd2/Train-Color-Matcher/blob/main/Screenshot/Screenshot%20(3).png)
 ![Screenshot](https://github.com/dundd2/Train-Color-Matcher/blob/main/Screenshot/Screenshot%20(4).png)
-![Screenshot](https://github.com/dundd2/Train-Color-Matcher/blob/main/Screenshot/Screenshot%20(5).png)
-![Screenshot](https://github.com/dundd2/Train-Color-Matcher/blob/main/Screenshot/Screenshot%20(6).png)
-![Screenshot](https://github.com/dundd2/Train-Color-Matcher/blob/main/Screenshot/Screenshot%20(7).png)
+
 
 ## Technical Skills Demonstrated
 
