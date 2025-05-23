@@ -1,0 +1,64 @@
+{
+    "_comment": "Train Color Matcher Configuration File",
+    "window": {
+        "_comment": "Window dimensions (min: 800x600)",
+        "width": 1280,
+        "height": 720,
+        "title": "Train Color Matching Game",
+        "framerate": 60,
+        "min_width": 800,
+        "min_height": 600
+    },
+    "colors": {
+        "_comment": "RGB colors (values: 0-255)",
+        "white": [255, 255, 255],
+        "black": [0, 0, 0],
+        "red": [255, 0, 0],
+        "blue": [0, 0, 255],
+        "green": [0, 255, 0],
+        "gray": [128, 128, 128],
+        "yellow": [255, 255, 0]
+    },
+    "game": {
+        "_comment": "Game settings (all values must be positive)",
+        "initial_train_speed": 5,
+        "initial_max_trains": 10,
+        "level_up_threshold": 5,
+        "max_trains_cap": 15,
+        "train_spacing": 80,
+        "railroad_tie_spacing": 30,
+        "railroad_height": 240,
+        "rail_thickness": 5
+    },
+    "train": {
+        "_comment": "Train dimensions (all values must be positive)",
+        "width": 60,
+        "height": 30,
+        "wheel_radius": 5
+    },
+    "parallax": {
+        "_comment": "Parallax scrolling settings",
+        "cloud_speed": 10,
+        "tree_speed": 30,
+        "cloud_offset_y": 100,
+        "tree_offset_y": 200
+    },
+    "particles": {
+        "count": 20,
+        "explosion_count": 30,
+        "size_min": 4,
+        "size_max": 8,
+        "velocity_min": -30,
+        "velocity_max": 30,
+        "gravity": 15,
+        "smoke_emission_chance": 0.3
+    },
+    "visual": {
+        "tree_count": 5,
+        "cloud_count": 3,
+        "star_count": 50,
+        "glow_max": 100,
+        "glow_min": 20,
+        "transition_speed": 500
+    }
+}
