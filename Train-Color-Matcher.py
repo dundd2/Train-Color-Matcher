@@ -524,6 +524,7 @@ class Train:
         self.height = CONFIG["train"]["height"]  # Height
         self.moving = False  # Moving state
         self.move_direction = "left"  # Move direction
+        self.speed = CONFIG['game']['initial_train_speed']  # Movement speed
         self.smoke_particles = []  # Smoke particles
         self.renderer = TrainRenderer(self)  # Train renderer
 
@@ -534,10 +535,11 @@ class Train:
     # Moves the train
     def move(self):
         if self.moving:  # If the train is moving
+            step = self.speed  # Movement step for this frame
             if self.move_direction == "left":  # If the train is moving left
-                self.x -= 5  # Move left
+                self.x -= step  # Move left
             elif self.move_direction == "right":  # If the train is moving right
-                self.x += 5  # Move right
+                self.x += step  # Move right
 
             self.emit_smoke()  # Emit smoke
 
@@ -618,29 +620,40 @@ class ParallaxLayer:
 class Game:
     # Initializes the game
     def __init__(self):
+        game_settings = CONFIG['game']  # Cache game configuration for reuse
+        self.level_up_threshold = game_settings['level_up_threshold']  # Set level up threshold
+        self.base_train_speed = game_settings['initial_train_speed']  # Store base train speed from config
+        self.base_max_trains = game_settings['initial_max_trains']  # Store base max trains from config
+        self.max_trains_cap = game_settings.get('max_trains_cap', 15)  # Store configured train cap
+        self.train_spacing = game_settings.get('train_spacing', TRAIN_SPACING)  # Spacing between trains
+
+        if not hasattr(self, 'theme'):
+            self.theme = LIGHT_THEME  # Fallback theme if none is provided
+
         self.state = MENU  # Set the initial state to MENU
-        self.reset_game()  # Reset the game
-        self.create_buttons()  # Create buttons
         self.high_score = 0  # Initialize high score
         self.sound_manager = SoundManager()  # Initialize sound manager
         self.messages = []  # Initialize messages
         self.mute_button = Button(WIDTH - 60, 10, 50, 50, "🔊", WHITE)  # Create mute button
         self.background = pygame.Surface((WIDTH, HEIGHT))  # Create background surface
+
+        self.train_speed = self.base_train_speed  # Set initial train speed
+        self.max_trains = self.base_max_trains  # Set initial max trains
+        self.train_positions = []  # Placeholder before game reset
+        self.explosion_particles = []  # Initialize explosion particles
+        self.combo_count = 0  # Initialize combo count
+        self.combo_message = None  # Initialize combo message
+
+        self.reset_game()  # Reset the game
+        self.create_buttons()  # Create buttons
         self.create_background()  # Create background
         self.current_train_index = 0  # Initialize current train index
-        self.explosion_particles = []  # Initialize explosion particles
-        self.level = 1  # Initialize level
-        self.level_up_threshold = CONFIG['game']['level_up_threshold']  # Set level up threshold
-        self.train_speed = CONFIG['game']['initial_train_speed']  # Set initial train speed
-        self.max_trains = CONFIG['game']['initial_max_trains']  # Set initial max trains
-        self.train_positions = [i * 80 for i in range(self.max_trains)]  # Set train positions
+
         self.font = pygame.font.Font(FONT_PATH, 36)  # Set font
         self.parallax_layers = [
             ParallaxLayer(os.path.join(IMAGES_DIR, "cloud_layer.png"), 10),
             ParallaxLayer(os.path.join(IMAGES_DIR, "tree_layer.png"), 30)
         ]
-        self.combo_count = 0  # Initialize combo count
-        self.combo_message = None  # Initialize combo message
 
     # Creates the background
     def create_background(self):
@@ -664,9 +677,9 @@ class Game:
         self.all_trains_moving = False  # Initialize all trains moving state
         self.explosion_particles = []  # Initialize explosion particles
         self.level = 1  # Initialize level
-        self.train_speed = 5  # Initialize train speed
-        self.max_trains = 10  # Initialize max trains
-        self.train_positions = [i * 80 for i in range(self.max_trains)]  # Set train positions
+        self.train_speed = self.base_train_speed  # Initialize train speed from config
+        self.max_trains = self.base_max_trains  # Initialize max trains from config
+        self.train_positions = [i * self.train_spacing for i in range(self.max_trains)]  # Set train positions
         self.initialize_trains()  # Initialize trains
         self.last_time = pygame.time.get_ticks()  # Set last time
         self.combo_count = 0  # Initialize combo count
@@ -680,12 +693,14 @@ class Game:
 
     # Initializes trains
     def initialize_trains(self):
-        self.train_positions = [i * 80 for i in range(self.max_trains)]  # Set train positions
+        self.train_positions = [i * self.train_spacing for i in range(self.max_trains)]  # Set train positions
         self.track_trains = []  # Initialize track trains
         for i in range(self.max_trains):  # Create track trains
             color = random.choice(TRAIN_COLORS)  # Choose a random color
             x = self.train_positions[i]  # Set X position
-            self.track_trains.append(Train(x, 200, color))  # Add train
+            train = Train(x, 200, color)  # Create the train
+            train.speed = self.train_speed  # Apply the current game speed
+            self.track_trains.append(train)  # Add train
 
         self.selection_trains = []  # Initialize selection trains
         for i, color in enumerate(TRAIN_COLORS):  # Create selection trains
@@ -783,7 +798,7 @@ class Game:
             clicked = False
             for selection_train in self.selection_trains:  # Check if a selection train is clicked
                 if (selection_train.x < pos[0] < selection_train.x + selection_train.width and
-                    selection_train.y < pos[1] < pos[1] < selection_train.y + selection_train.height):
+                    selection_train.y < pos[1] < selection_train.y + selection_train.height):
                     clicked = True
                     
                     if self.current_train_index < len(self.track_trains):  # If there are remaining track trains
@@ -794,6 +809,7 @@ class Game:
                             self.create_explosion(current_train.x, current_train.y, current_train.color)  # Create explosion
                             current_train.moving = True  # Set train to moving
                             current_train.move_direction = "left"  # Set move direction to left
+                            current_train.speed = self.train_speed  # Move using the configured speed
                             self.score += 1  # Increment score
                             self.add_message("Correct!", self.theme['secondary'])  # Add correct message
                             self.current_train_index += 1  # Increment current train index
@@ -860,11 +876,9 @@ class Game:
         self.sound_manager.play('level_up')  # Play level up sound
         self.add_message(f"Level Up! {self.level}", self.theme['primary'], 1.5)  # Add level up message
         self.train_speed += 1  # Increment train speed
-        self.max_trains += 2  # Increment max trains
-        self.train_positions = [i * 80 for i in range(self.max_trains)]  # Set train positions
+        self.max_trains = min(self.max_trains + 2, self.max_trains_cap)  # Increment max trains with cap
         self.initialize_trains()  # Initialize trains
         self.sound_manager.play('victory')  # Play victory sound
-        self.max_trains = min(self.max_trains, 15)  # Cap max trains
 
     # Creates an explosion
     def create_explosion(self, x, y, color):
@@ -985,6 +999,7 @@ class ModernGame(Game):
                 self.sound_manager.play('correct')  # Play correct sound
                 current_train.moving = True  # Set train to moving
                 current_train.move_direction = "left"  # Set move direction to left
+                current_train.speed = self.train_speed  # Move using the configured speed
                 self.score += 1  # Increment score
                 self.add_message("Correct!", self.theme['secondary'])  # Add correct message
                 self.current_train_index += 1  # Increment current train index
