@@ -59,6 +59,16 @@ CLOUD_SEGMENT_SIZES = [20, 25, 20]  # Sizes of cloud segments
 pygame.init()  # Initialize Pygame
 pygame.font.init()  # Initialize the font module
 
+DISPLAY_FLAGS = getattr(pygame, "RESIZABLE", 0)
+
+
+def set_window_mode(size: Tuple[int, int]) -> pygame.Surface:
+    """Set the display mode while tolerating limited pygame stubs used in tests."""
+    try:
+        return pygame.display.set_mode(size, DISPLAY_FLAGS)
+    except TypeError:
+        return pygame.display.set_mode(size)
+
 # Configuration validation class: Validates configuration settings
 class ConfigValidator:
     # Validates a color value
@@ -183,6 +193,60 @@ class ConfigValidator:
             'parallax': ConfigValidator.validate_parallax(config)
         }
 
+def wrap_text(text: str, font, max_width: int) -> List[str]:
+    """Wraps *text* into lines that do not exceed *max_width* pixels."""
+    if font is None:
+        raise ValueError("A font instance is required for text wrapping")
+    if max_width <= 0:
+        raise ValueError("Maximum width must be a positive integer")
+
+    if not text:
+        return []
+
+    words = text.split()
+    if not words:
+        return []
+
+    lines: List[str] = []
+    current_line = words[0]
+
+    for word in words[1:]:
+        candidate = f"{current_line} {word}"
+        width, _ = font.size(candidate)
+        if width <= max_width or not current_line:
+            current_line = candidate
+        else:
+            lines.append(current_line)
+            current_line = word
+
+    lines.append(current_line)
+    return lines
+
+
+def calculate_accuracy(correct_attempts: int, total_attempts: int) -> float:
+    """Return the hit accuracy as a percentage.
+
+    Args:
+        correct_attempts: Number of successful matches.
+        total_attempts: Total number of attempts made.
+
+    Returns:
+        A percentage in the range 0-100 representing the success rate.
+
+    Raises:
+        ValueError: If the provided counts are negative or inconsistent.
+    """
+
+    if correct_attempts < 0 or total_attempts < 0:
+        raise ValueError("Attempt counts must be non-negative")
+    if correct_attempts > total_attempts:
+        raise ValueError("Correct attempts cannot exceed total attempts")
+
+    if total_attempts == 0:
+        return 0.0
+
+    return (correct_attempts / total_attempts) * 100.0
+
 # Load and validate configuration from JSON file
 def load_config():
     try:
@@ -214,7 +278,7 @@ SOUNDS_DIR = os.path.join(ASSETS_DIR, "music")  # Sounds directory
 IMAGES_DIR = os.path.join(ASSETS_DIR, "images")  # Images directory
 
 # Set up the display
-screen = pygame.display.set_mode((WIDTH, HEIGHT))  # Create the display
+screen = set_window_mode((WIDTH, HEIGHT))  # Create the display
 pygame.display.set_caption(WINDOW_TITLE)  # Set the window title
 
 # Colors: Define RGB color values
@@ -226,6 +290,7 @@ YELLOW = (255, 255, 0)  # Yellow color
 
 # Theme colors: Define color schemes for light and dark themes
 LIGHT_THEME = {
+    'name': 'LIGHT',
     'background': (245, 245, 245),  # Light theme background color
     'primary': (66, 133, 244),  # Light theme primary color
     'secondary': (52, 168, 83),  # Light theme secondary color
@@ -235,10 +300,14 @@ LIGHT_THEME = {
     'shadow': (0, 0, 0, 50),  # Light theme shadow color
     'button': (255, 255, 255),  # Light theme button color
     'track': (200, 200, 200),  # Light theme track color
-    'rail_color': (100, 100, 100)   # Light theme rail color
+    'rail_color': (100, 100, 100),   # Light theme rail color
+    'canvas_fill': (255, 255, 255, 180),
+    'canvas_border': (255, 255, 255, 220),
+    'night_mode': False
 }
 
 DARK_THEME = {
+    'name': 'DARK',
     'background': (30, 30, 30),  # Dark theme background color
     'primary': (138, 180, 248),  # Dark theme primary color
     'secondary': (129, 201, 149),  # Dark theme secondary color
@@ -248,8 +317,64 @@ DARK_THEME = {
     'shadow': (0, 0, 0, 80),  # Dark theme shadow color
     'button': (70, 70, 70),  # Dark theme button color
     'track': (70, 70, 70),  # Dark theme track color
-    'rail_color': (200, 200, 200)   # Dark theme rail color
+    'rail_color': (200, 200, 200),   # Dark theme rail color
+    'canvas_fill': (30, 30, 30, 200),
+    'canvas_border': (80, 80, 80, 220),
+    'night_mode': True
 }
+
+LIQUID_GLASS_THEME = {
+    'name': 'GLASS',
+    'background': (22, 35, 55),
+    'background_gradient': ((41, 73, 110), (9, 20, 38)),
+    'primary': (64, 156, 255),
+    'secondary': (102, 237, 249),
+    'accent': (255, 176, 79),
+    'error': (255, 99, 132),
+    'text': (230, 245, 255),
+    'shadow': (15, 28, 55, 130),
+    'button': (28, 51, 82),
+    'track': (52, 89, 126),
+    'rail_color': (195, 220, 255),
+    'canvas_fill': (255, 255, 255, 90),
+    'canvas_border': (255, 255, 255, 140),
+    'glass_highlight': (255, 255, 255, 60),
+    'night_mode': True
+}
+
+
+def draw_vertical_gradient(surface: pygame.Surface, top_color: Tuple[int, int, int], bottom_color: Tuple[int, int, int]) -> None:
+    """Render a vertical gradient on *surface* from *top_color* to *bottom_color*."""
+    height = surface.get_height()
+    width = surface.get_width()
+    if height <= 1:
+        surface.fill(top_color)
+        return
+
+    for y in range(height):
+        ratio = y / (height - 1)
+        color = tuple(
+            int(top_color[i] + (bottom_color[i] - top_color[i]) * ratio)
+            for i in range(3)
+        )
+        pygame.draw.line(surface, color, (0, y), (width, y))
+
+
+def draw_glass_panel(surface: pygame.Surface, rect: pygame.Rect, theme: Dict[str, Tuple[int, int, int]]) -> None:
+    """Draw a frosted glass style panel using the active *theme*."""
+    panel = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+    fill_color = theme.get('canvas_fill', (255, 255, 255, 160))
+    border_color = theme.get('canvas_border', (255, 255, 255, 200))
+    pygame.draw.rect(panel, fill_color, panel.get_rect(), border_radius=18)
+    pygame.draw.rect(panel, border_color, panel.get_rect(), width=2, border_radius=18)
+
+    highlight_alpha = theme.get('glass_highlight')
+    if highlight_alpha and rect.width > 24:
+        highlight = pygame.Surface((rect.width - 24, 12), pygame.SRCALPHA)
+        highlight.fill(highlight_alpha)
+        panel.blit(highlight, (12, 12))
+
+    surface.blit(panel, rect.topleft)
 
 # Game states: Define possible game states
 MENU = "menu"  # Menu game state
@@ -387,19 +512,25 @@ class ExplosionParticle(Particle):
 # Button class for UI elements
 class Button:
     # Initializes a button
-    def __init__(self, x, y, width, height, text, color):
+    def __init__(self, x, y, width, height, text, color, text_color=BLACK):
         self.rect = pygame.Rect(x, y, width, height)  # Create a rectangle
         self.text = text  # Text
         self.color = color  # Color
+        self.text_color = text_color  # Text color
         self.font = pygame.font.Font(FONT_PATH, 36)  # Font
 
     # Draws the button
     def draw(self, screen):
         pygame.draw.rect(screen, self.color, self.rect)  # Draw the rectangle
         pygame.draw.rect(screen, BLACK, self.rect, 2)  # Draw the border
-        text_surface = self.font.render(self.text, True, BLACK)  # Render the text
+        text_surface = self.font.render(self.text, True, self.text_color)  # Render the text
         text_rect = text_surface.get_rect(center=self.rect.center)  # Get the text rectangle
         screen.blit(text_surface, text_rect)  # Blit the text to the screen
+
+    def set_colors(self, color, text_color=None):
+        self.color = color
+        if text_color is not None:
+            self.text_color = text_color
 
     # Checks if the button is clicked
     def is_clicked(self, pos):
@@ -419,6 +550,7 @@ class ModernButton(Button):
         self.glow_direction = 1  # Glow direction
         self.sound_manager = sound_manager  # Sound manager
         self.font = pygame.font.Font(FONT_PATH, 36)  # Font
+        self.base_color = color  # Preserve the intended color
 
     # Draws the modern button
     def draw(self, screen):
@@ -447,6 +579,19 @@ class ModernButton(Button):
 
         for particle in self.particles:  # Draw the particles
             particle.draw(screen)
+
+    def set_color(self, color):
+        self.base_color = color
+        self.color = color
+
+    def apply_theme(self, theme):
+        self.theme = theme
+
+    def apply_layout(self, x, y, width=None, height=None):
+        width = width if width is not None else self.rect.width
+        height = height if height is not None else self.rect.height
+        self.rect = pygame.Rect(x, y, width, height)
+        self.original_y = y
 
     # Updates the modern button
     def update(self, dt):
@@ -527,6 +672,7 @@ class Train:
         self.speed = CONFIG['game']['initial_train_speed']  # Movement speed
         self.smoke_particles = []  # Smoke particles
         self.renderer = TrainRenderer(self)  # Train renderer
+        self.bounds_width = WIDTH  # Default movement bounds
 
     # Draws the train
     def draw(self, screen, is_dark_mode=False):
@@ -548,7 +694,8 @@ class Train:
 
             self.smoke_particles = [p for p in self.smoke_particles if p.lifetime > 0]  # Remove dead particles
 
-            if self.x + self.width < 0 or self.x > WIDTH:  # If the train is out of bounds
+            bounds = getattr(self, 'bounds_width', WIDTH)
+            if self.x + self.width < 0 or self.x > bounds:  # If the train is out of bounds
                 self.moving = False  # Stop moving
         return self.moving  # Return the moving state
 
@@ -577,7 +724,10 @@ class Message:
         if self.alpha > 0:  # If the alpha value is greater than 0
             text_surface = self.font.render(self.text, True, self.color)  # Render the text
             text_surface.set_alpha(self.alpha)  # Set the alpha value
-            text_rect = text_surface.get_rect(center=(WIDTH//2, HEIGHT//2))  # Get the text rectangle
+            surface = pygame.display.get_surface()
+            width = surface.get_width() if surface else WIDTH
+            height = surface.get_height() if surface else HEIGHT
+            text_rect = text_surface.get_rect(center=(width // 2, height // 2))  # Get the text rectangle
             screen.blit(text_surface, text_rect)  # Blit the text to the screen
 
     # Updates the message
@@ -598,6 +748,7 @@ class ParallaxLayer:
             self.valid = False  # Set valid to False
         
         self.x = 0  # X position
+        self.offset_y = offset_y  # Store the vertical offset
         self.y = HEIGHT - self.image.get_height() + offset_y  # Y position
         self.speed = speed  # Speed
 
@@ -630,12 +781,23 @@ class Game:
         if not hasattr(self, 'theme'):
             self.theme = LIGHT_THEME  # Fallback theme if none is provided
 
+        self.window_width = WIDTH
+        self.window_height = HEIGHT
+
         self.state = MENU  # Set the initial state to MENU
         self.high_score = 0  # Initialize high score
         self.sound_manager = SoundManager()  # Initialize sound manager
         self.messages = []  # Initialize messages
-        self.mute_button = Button(WIDTH - 60, 10, 50, 50, "🔊", WHITE)  # Create mute button
-        self.background = pygame.Surface((WIDTH, HEIGHT))  # Create background surface
+        self.mute_button = Button(
+            self.window_width - MUTE_BUTTON_SIZE - UI_PADDING,
+            UI_PADDING,
+            MUTE_BUTTON_SIZE,
+            MUTE_BUTTON_SIZE,
+            "🔊",
+            self.theme['button'],
+            self.theme['text']
+        )  # Create mute button
+        self.background = pygame.Surface((self.window_width, self.window_height))  # Create background surface
 
         self.train_speed = self.base_train_speed  # Set initial train speed
         self.max_trains = self.base_max_trains  # Set initial max trains
@@ -643,6 +805,9 @@ class Game:
         self.explosion_particles = []  # Initialize explosion particles
         self.combo_count = 0  # Initialize combo count
         self.combo_message = None  # Initialize combo message
+        self.correct_matches = 0  # Track number of correct selections
+        self.incorrect_matches = 0  # Track number of incorrect selections
+        self.max_combo = 0  # Track best combo streak
 
         self.reset_game()  # Reset the game
         self.create_buttons()  # Create buttons
@@ -657,11 +822,12 @@ class Game:
 
     # Creates the background
     def create_background(self):
+        self.background = pygame.Surface((self.window_width, self.window_height))
         self.background.fill(self.theme['background'])  # Fill the background
-        for x in range(0, WIDTH, 30):  # Draw the track
+        for x in range(0, self.window_width, 30):  # Draw the track
             pygame.draw.rect(self.background, self.theme['track'], (x, 240, 20, 20))
-        pygame.draw.line(self.background, self.theme['rail_color'], (0, 235), (WIDTH, 235), 5)  # Draw the rails
-        pygame.draw.line(self.background, self.theme['rail_color'], (0, 265), (WIDTH, 265), 5)
+        pygame.draw.line(self.background, self.theme['rail_color'], (0, 235), (self.window_width, 235), 5)  # Draw the rails
+        pygame.draw.line(self.background, self.theme['rail_color'], (0, 265), (self.window_width, 265), 5)
 
     # Adds a message
     def add_message(self, text, color, duration=1.0):
@@ -684,6 +850,9 @@ class Game:
         self.last_time = pygame.time.get_ticks()  # Set last time
         self.combo_count = 0  # Initialize combo count
         self.combo_message = None  # Initialize combo message
+        self.correct_matches = 0  # Reset correct match counter
+        self.incorrect_matches = 0  # Reset incorrect match counter
+        self.max_combo = 0  # Reset best combo streak
 
     # Creates buttons
     def create_buttons(self):
@@ -754,11 +923,23 @@ class Game:
         progress_text = font.render(f'Remaining Trains: {remaining_trains}', True, self.theme['text'])  # Render progress text
         score_text = font.render(f'Score: {self.score}', True, self.theme['text'])  # Render score text
         level_text = font.render(f'Level: {self.level}', True, self.theme['text'])  # Render level text
-        
+        accuracy = calculate_accuracy(
+            self.correct_matches,
+            self.correct_matches + self.incorrect_matches
+        )
+        accuracy_text = font.render(f'Accuracy: {accuracy:.0f}%', True, self.theme['text'])  # Render accuracy text
+        combo_text = font.render(
+            f'Combo: x{self.combo_count} (Best x{self.max_combo})',
+            True,
+            self.theme['text']
+        )  # Render combo text
+
         screen.blit(progress_text, (10, 10))  # Blit progress text
         screen.blit(score_text, (10, 40))  # Blit score text
         screen.blit(level_text, (10, 70))  # Blit level text
-        
+        screen.blit(accuracy_text, (10, 100))  # Blit accuracy text
+        screen.blit(combo_text, (10, 130))  # Blit combo text
+
         self.mute_button.draw(screen)  # Draw mute button
 
         for particle in self.explosion_particles:  # Draw explosion particles
@@ -772,10 +953,18 @@ class Game:
         font = pygame.font.Font(FONT_PATH, 64)  # Set font
         game_over_text = font.render("Game Over!", True, self.theme['text'])  # Render game over text
         score_text = font.render(f"Final Score: {self.score}", True, self.theme['text'])  # Render score text
-        
+        accuracy = calculate_accuracy(
+            self.correct_matches,
+            self.correct_matches + self.incorrect_matches
+        )
+        accuracy_text = font.render(f"Accuracy: {accuracy:.0f}%", True, self.theme['text'])  # Render accuracy text
+        best_combo_text = font.render(f"Best Combo: x{self.max_combo}", True, self.theme['text'])  # Render combo text
+
         screen.blit(game_over_text, (WIDTH//2 - 150, HEIGHT//4))  # Blit game over text
         screen.blit(score_text, (WIDTH//2 - 150, HEIGHT//3))  # Blit score text
-        
+        screen.blit(accuracy_text, (WIDTH//2 - 150, HEIGHT//3 + 70))  # Blit accuracy text
+        screen.blit(best_combo_text, (WIDTH//2 - 150, HEIGHT//3 + 140))  # Blit best combo text
+
         self.play_again_button.draw(screen)  # Draw play again button
 
     # Handles click events
@@ -814,6 +1003,8 @@ class Game:
                             self.add_message("Correct!", self.theme['secondary'])  # Add correct message
                             self.current_train_index += 1  # Increment current train index
                             self.combo_count += 1  # Increment combo count
+                            self.correct_matches += 1  # Increment correct counter
+                            self.max_combo = max(self.max_combo, self.combo_count)  # Update best combo
                             self.update_combo_message()  # Update combo message
                             self.sound_manager.play('item_pickup')  # Play item pickup sound
                             if self.current_train_index >= len(self.track_trains):  # If all track trains are matched
@@ -823,6 +1014,7 @@ class Game:
                             self.add_message("Wrong Color!", self.theme['error'])  # Add wrong color message
                             self.combo_count = 0  # Reset combo count
                             self.combo_message = None  # Reset combo message
+                            self.incorrect_matches += 1  # Increment incorrect counter
             if not clicked:
                 self.add_message("Please click on a train!", self.theme['accent'], 0.5)  # Add click on train message
 
@@ -918,14 +1110,18 @@ class Cloud:
     # Updates the cloud
     def update(self, dt):
         self.x += self.velocity * dt  # Update X position
-        if self.x > WIDTH:  # If the cloud is out of bounds
+        surface = pygame.display.get_surface()
+        limit = surface.get_width() if surface else WIDTH
+        if self.x > limit + 100:  # If the cloud is out of bounds
             self.x = -100  # Reset X position
 
     # Draws the cloud
     def draw(self, screen):
-        pygame.draw.circle(screen, WHITE, (self.x, self.y), 20)  # Draw the first segment
-        pygame.draw.circle(screen, WHITE, (self.x + 20, self.y + 10), 25)  # Draw the second segment
-        pygame.draw.circle(screen, WHITE, (self.x + 40, self.y), 20)  # Draw the third segment
+        base_x = int(self.x)
+        base_y = int(self.y)
+        pygame.draw.circle(screen, WHITE, (base_x, base_y), 20)  # Draw the first segment
+        pygame.draw.circle(screen, WHITE, (base_x + 20, base_y + 10), 25)  # Draw the second segment
+        pygame.draw.circle(screen, WHITE, (base_x + 40, base_y), 20)  # Draw the third segment
 
 # Star class for drawing stars in the background
 class Star:
@@ -943,25 +1139,57 @@ class Star:
 
 # Modern game class with additional features
 class ModernGame(Game):
-    # Initializes the modern game
+    """Modern presentation of the game with responsive layouts and dynamic themes."""
+
     def __init__(self):
-        self.theme = LIGHT_THEME  # Set theme to light theme
-        super().__init__()  # Call superclass constructor
-        self.dark_mode = False  # Set dark mode to False
-        self.theme = LIGHT_THEME  # Set theme to light theme
-        self.transition_alpha = 255  # Set transition alpha
-        self.particles = []  # Initialize particles
-        self.create_modern_buttons()  # Create modern buttons
-        self.theme_button = ModernButton(WIDTH - 100, 10, 80, 40, "DARK", self.theme['button'], self.theme, self.sound_manager)  # Create theme button
-        self.all_trains_moving = False  # Set all trains moving state to False
-        self.instruction_text = "Match the trains starting from the left!"  # Set instruction text
-        self.instruction_font = pygame.font.Font(FONT_PATH, 36)  # Set instruction font
-        self.trees = [Tree(random.randint(50, WIDTH - 50), HEIGHT - 100) for _ in range(TREE_COUNT)]  # Create trees
-        self.clouds = [Cloud(random.randint(0, WIDTH), random.randint(*CLOUD_HEIGHT_RANGE)) for _ in range(CLOUD_COUNT)]  # Create clouds
-        self.stars = [Star(random.randint(0, WIDTH), random.randint(0, HEIGHT // 2)) for _ in range(STAR_COUNT)]  # Create stars
-        self.transitioning = False  # Set transitioning state to False
-        self.transition_alpha = 0  # Set transition alpha
-        self.selected_train_index = 0  # Set selected train index
+        self.themes = [LIGHT_THEME, DARK_THEME, LIQUID_GLASS_THEME]
+        self.theme_index = 0
+        self.pending_theme_index = None
+        self.theme = self.themes[self.theme_index]
+        self.window_width = WIDTH
+        self.window_height = HEIGHT
+        self.layout: Dict[str, pygame.Rect] = {}
+        self.instruction_text = "Match the trains starting from the left!"
+        self.motivation_quote = "Stay fluid and focused—the right color keeps the cargo on track."
+        self.timeline_entries: List[Dict[str, object]] = []
+        self.timeline_content_height = 0
+        self.scroll_offset = 0
+        self.selected_train_index = 0
+        self.transitioning = False
+        self.transition_alpha = 0
+        self.track_origin_x = UI_PADDING * 2
+        self.selection_origin_x = UI_PADDING * 2
+        self.track_y = int(self.window_height * 0.35)
+        self.selection_y = int(self.window_height * 0.72)
+        self.selection_spacing = TRAIN_SPACING
+        self.dark_mode = False  # Legacy toggle for night elements
+        self.recalculate_layout(self.window_width, self.window_height)
+        super().__init__()
+
+        self.theme_button = ModernButton(
+            self.layout['theme_button'].x,
+            self.layout['theme_button'].y,
+            self.layout['theme_button'].width,
+            self.layout['theme_button'].height,
+            self.next_theme_label(),
+            self.theme['button'],
+            self.theme,
+            self.sound_manager
+        )
+        self.create_modern_buttons()
+
+        self.hud_font = pygame.font.Font(FONT_PATH, 32)
+        self.quote_font = pygame.font.Font(FONT_PATH, 24)
+        self.timeline_font = pygame.font.Font(FONT_PATH, 24)
+        self.instruction_font = pygame.font.Font(FONT_PATH, 30)
+
+        self.recalculate_layout(self.window_width, self.window_height)
+        self.refresh_button_palette()
+
+        self.trees = [Tree(random.randint(50, self.window_width - 50), self.window_height - 100) for _ in range(TREE_COUNT)]
+        self.clouds = [Cloud(random.randint(0, self.window_width), random.randint(*CLOUD_HEIGHT_RANGE)) for _ in range(CLOUD_COUNT)]
+        self.stars = [Star(random.randint(0, self.window_width), random.randint(0, self.window_height // 2)) for _ in range(STAR_COUNT)]
+
         try:
             self.parallax_layers = [
                 ParallaxLayer(
@@ -979,192 +1207,493 @@ class ModernGame(Game):
             print(f"Warning: Missing parallax configuration: {e}")
             self.parallax_layers = []
 
-    # Handles keyboard input
-    def handle_keyboard_input(self, event):
-        if self.state == PLAYING:  # If the state is PLAYING
-            if event.key == pygame.K_LEFT:  # If the left arrow key is pressed
-                self.selected_train_index = (self.selected_train_index - 1) % len(self.selection_trains)  # Decrement selected train index
-            elif event.key == pygame.K_RIGHT:  # If the right arrow key is pressed
-                self.selected_train_index = (self.selected_train_index + 1) % len(self.selection_trains)  # Increment selected train index
-            elif event.key == pygame.K_SPACE or event.key == pygame.K_RETURN:  # If the space or enter key is pressed
-                self.match_train()  # Match train
+    def create_buttons(self):
+        """Override base button creation to use the modern components."""
+        # Buttons are created after initialization in create_modern_buttons.
+        pass
 
-    # Matches the selected train with the current track train
-    def match_train(self):
-        if self.current_train_index < len(self.track_trains):  # If there are remaining track trains
-            selected_train = self.selection_trains[self.selected_train_index]  # Get selected train
-            current_train = self.track_trains[self.current_train_index]  # Get current track train
+    def recalculate_layout(self, width: int, height: int) -> None:
+        width = max(width, MIN_WINDOW_WIDTH)
+        height = max(height, MIN_WINDOW_HEIGHT)
+        self.window_width = width
+        self.window_height = height
 
-            if selected_train.color == current_train.color:  # If the colors match
-                self.sound_manager.play('correct')  # Play correct sound
-                current_train.moving = True  # Set train to moving
-                current_train.move_direction = "left"  # Set move direction to left
-                current_train.speed = self.train_speed  # Move using the configured speed
-                self.score += 1  # Increment score
-                self.add_message("Correct!", self.theme['secondary'])  # Add correct message
-                self.current_train_index += 1  # Increment current train index
+        max_trains = getattr(self, 'max_trains', CONFIG['game']['initial_max_trains'])
+        spacing_min = CONFIG['train']['width'] + 40
+        available_track_width = max(width - UI_PADDING * 4, spacing_min)
+        self.train_spacing = max(spacing_min, available_track_width // max(1, max_trains))
+        self.track_origin_x = UI_PADDING * 2
+        self.track_y = int(height * 0.35)
 
-                if self.current_train_index >= len(self.track_trains):  # If all track trains are matched
-                    self.all_trains_moving = True  # Set all trains moving state to True
-            else:
-                self.sound_manager.play('wrong')  # Play wrong sound
-                self.add_message("Wrong Color!", self.theme['error'])  # Add wrong color message
+        self.selection_y = int(height * 0.72)
+        self.selection_spacing = max(spacing_min, int(width * 0.18))
+        total_selection_span = self.selection_spacing * (len(TRAIN_COLORS) - 1)
+        self.selection_origin_x = int(width // 2 - total_selection_span / 2 - CONFIG['train']['width'] / 2)
+
+        hud_width = max(280, int(width * 0.28))
+        hud_height = max(240, int(height * 0.4))
+        hud_rect = pygame.Rect(width - hud_width - UI_PADDING, UI_PADDING, hud_width, min(hud_height, height - UI_PADDING * 2 - 120))
+        instruction_width = min(int(width * 0.6), width - UI_PADDING * 2)
+        instruction_rect = pygame.Rect(width // 2 - instruction_width // 2, height - 90, instruction_width, 70)
+
+        theme_button_rect = pygame.Rect(width - 120 - UI_PADDING - MUTE_BUTTON_SIZE, UI_PADDING, 110, 44)
+        mute_rect = pygame.Rect(width - MUTE_BUTTON_SIZE - UI_PADDING, UI_PADDING, MUTE_BUTTON_SIZE, MUTE_BUTTON_SIZE)
+
+        menu_panel_width = min(int(width * 0.6), width - UI_PADDING * 2)
+        menu_panel_rect = pygame.Rect(width // 2 - menu_panel_width // 2, int(height * 0.18), menu_panel_width, int(height * 0.5))
+        button_width = min(360, max(260, int(menu_panel_rect.width * 0.65)))
+        button_height = 60
+        start_rect = pygame.Rect(width // 2 - button_width // 2, menu_panel_rect.bottom - button_height * 2 - 30, button_width, button_height)
+        quit_rect = pygame.Rect(start_rect.x, start_rect.bottom + 20, button_width, button_height)
+        play_again_rect = pygame.Rect(start_rect)
+
+        scroll_height = max(110, hud_rect.height - 190)
+        scroll_rect = pygame.Rect(hud_rect.left + 16, hud_rect.top + 150, hud_rect.width - 32, scroll_height)
+
+        self.layout['hud_rect'] = hud_rect
+        self.layout['instruction_rect'] = instruction_rect
+        self.layout['theme_button'] = theme_button_rect
+        self.layout['mute_button'] = mute_rect
+        self.layout['menu_panel'] = menu_panel_rect
+        self.layout['start_button'] = start_rect
+        self.layout['quit_button'] = quit_rect
+        self.layout['play_again_button'] = play_again_rect
+        self.layout['scroll_rect'] = scroll_rect
+
+        wrap_width = max(220, hud_rect.width - 40)
+        if hasattr(self, 'instruction_font'):
+            self.instruction_lines = wrap_text(self.instruction_text, self.instruction_font, max(120, instruction_rect.width - 40))
         else:
-            self.add_message("No more trains to match!", self.theme['accent'], 0.5)  # Add no more trains message
+            self.instruction_lines = [self.instruction_text]
 
-    # Starts the theme transition
+        if hasattr(self, 'quote_font'):
+            self.quote_lines = wrap_text(self.motivation_quote, self.quote_font, wrap_width)
+        else:
+            self.quote_lines = [self.motivation_quote]
+
+        if hasattr(self, 'timeline_font'):
+            self.timeline_wrap_width = max(120, scroll_rect.width - 32)
+
+        if hasattr(self, 'mute_button'):
+            self.mute_button.rect = pygame.Rect(mute_rect)
+            self.mute_button.set_colors(self.theme['button'], self.theme['text'])
+
+        if hasattr(self, 'theme_button'):
+            self.theme_button.apply_layout(theme_button_rect.x, theme_button_rect.y, theme_button_rect.width, theme_button_rect.height)
+
+        if hasattr(self, 'start_button'):
+            self.update_button_layout()
+
+        if hasattr(self, 'track_trains'):
+            for index, train in enumerate(self.track_trains):
+                train.x = self.track_origin_x + index * self.train_spacing
+                train.y = self.track_y
+                train.bounds_width = self.window_width
+        if hasattr(self, 'selection_trains'):
+            for index, train in enumerate(self.selection_trains):
+                train.x = self.selection_origin_x + index * self.selection_spacing
+                train.y = self.selection_y
+                train.bounds_width = self.window_width
+
+    def update_button_layout(self) -> None:
+        start_rect = self.layout['start_button']
+        quit_rect = self.layout['quit_button']
+        play_again_rect = self.layout['play_again_button']
+        self.start_button.apply_layout(start_rect.x, start_rect.y, start_rect.width, start_rect.height)
+        self.quit_button.apply_layout(quit_rect.x, quit_rect.y, quit_rect.width, quit_rect.height)
+        self.play_again_button.apply_layout(play_again_rect.x, play_again_rect.y, play_again_rect.width, play_again_rect.height)
+
+    def refresh_button_palette(self) -> None:
+        self.start_button.set_color(self.theme['primary'])
+        self.start_button.apply_theme(self.theme)
+        self.quit_button.set_color(self.theme['error'])
+        self.quit_button.apply_theme(self.theme)
+        self.play_again_button.set_color(self.theme['primary'])
+        self.play_again_button.apply_theme(self.theme)
+        self.theme_button.set_color(self.theme['button'])
+        self.theme_button.apply_theme(self.theme)
+        self.theme_button.text = self.next_theme_label()
+        if hasattr(self, 'mute_button'):
+            self.mute_button.set_colors(self.theme['button'], self.theme['text'])
+
+    def next_theme_label(self) -> str:
+        return self.themes[(self.theme_index + 1) % len(self.themes)]['name']
+
+    @property
+    def uses_night_sky(self) -> bool:
+        return bool(self.theme.get('night_mode', False))
+
+    def create_modern_buttons(self):
+        start_rect = self.layout['start_button']
+        quit_rect = self.layout['quit_button']
+        play_again_rect = self.layout['play_again_button']
+        self.start_button = ModernButton(start_rect.x, start_rect.y, start_rect.width, start_rect.height, "Start Game", self.theme['primary'], self.theme, self.sound_manager)
+        self.quit_button = ModernButton(quit_rect.x, quit_rect.y, quit_rect.width, quit_rect.height, "Quit", self.theme['error'], self.theme, self.sound_manager)
+        self.play_again_button = ModernButton(play_again_rect.x, play_again_rect.y, play_again_rect.width, play_again_rect.height, "Play Again", self.theme['primary'], self.theme, self.sound_manager)
+
+    def initialize_trains(self):
+        self.track_trains = []
+        for index in range(self.max_trains):
+            color = random.choice(TRAIN_COLORS)
+            x = self.track_origin_x + index * self.train_spacing
+            train = Train(x, self.track_y, color)
+            train.speed = self.train_speed
+            train.bounds_width = self.window_width
+            self.track_trains.append(train)
+
+        self.selection_trains = []
+        for index, color in enumerate(TRAIN_COLORS):
+            x = self.selection_origin_x + index * self.selection_spacing
+            train = Train(x, self.selection_y, color)
+            train.bounds_width = self.window_width
+            self.selection_trains.append(train)
+
+    def add_message(self, text, color, duration=1.0):
+        super().add_message(text, color, duration)
+        self.timeline_entries.append({
+            'time': pygame.time.get_ticks(),
+            'text': text,
+            'color': tuple(color)
+        })
+        self.timeline_entries = self.timeline_entries[-16:]
+        self.scroll_offset = self.timeline_content_height + 100
+
+    def handle_keyboard_input(self, event):
+        if self.state == PLAYING:
+            if event.key == pygame.K_LEFT:
+                self.selected_train_index = (self.selected_train_index - 1) % len(self.selection_trains)
+            elif event.key == pygame.K_RIGHT:
+                self.selected_train_index = (self.selected_train_index + 1) % len(self.selection_trains)
+            elif event.key in (pygame.K_SPACE, pygame.K_RETURN):
+                self.match_train()
+
+    def match_train(self):
+        if self.current_train_index < len(self.track_trains):
+            selected_train = self.selection_trains[self.selected_train_index]
+            current_train = self.track_trains[self.current_train_index]
+            if selected_train.color == current_train.color:
+                self.sound_manager.play('correct')
+                self.create_explosion(current_train.x, current_train.y, current_train.color)
+                current_train.moving = True
+                current_train.move_direction = "left"
+                current_train.speed = self.train_speed
+                self.score += 1
+                self.add_message("Correct!", self.theme['secondary'])
+                self.current_train_index += 1
+                self.combo_count += 1
+                self.correct_matches += 1
+                self.max_combo = max(self.max_combo, self.combo_count)
+                self.update_combo_message()
+                self.sound_manager.play('item_pickup')
+                if self.current_train_index >= len(self.track_trains):
+                    self.all_trains_moving = True
+            else:
+                self.sound_manager.play('wrong')
+                self.add_message("Wrong Color!", self.theme['error'])
+                self.combo_count = 0
+                self.combo_message = None
+                self.incorrect_matches += 1
+        else:
+            self.add_message("No more trains to match!", self.theme['accent'], 0.5)
+
     def start_transition(self):
-        self.transitioning = True  # Set transitioning state to True
-        self.transition_alpha = 0  # Set transition alpha
+        self.transitioning = True
+        self.transition_alpha = 0
 
-    # Toggles the theme
     def toggle_theme(self):
-        self.start_transition()  # Start transition
+        self.pending_theme_index = (self.theme_index + 1) % len(self.themes)
+        self.start_transition()
 
-    # Creates the background
     def create_background(self):
-        self.background.fill(self.theme['background'])  # Fill the background
-        for x in range(0, WIDTH, 30):  # Draw the track
-            pygame.draw.rect(self.background, self.theme['track'], (x, 240, 20, 20))
-        pygame.draw.line(self.background, self.theme['text'], (0, 235), (WIDTH, 235), 5)  # Draw the rails
-        pygame.draw.line(self.background, self.theme['text'], (0, 265), (WIDTH, 265), 5)
+        self.background = pygame.Surface((self.window_width, self.window_height), pygame.SRCALPHA)
+        gradient = self.theme.get('background_gradient')
+        if gradient:
+            draw_vertical_gradient(self.background, gradient[0], gradient[1])
+        else:
+            self.background.fill(self.theme['background'])
 
-    # Draws the game
-    def draw_game(self, screen):
-        screen.blit(self.background, (0, 0))  # Blit background
-        
-        if self.dark_mode:  # If dark mode is enabled
-            for star in self.stars:  # Draw stars
+        rail_color = self.theme.get('rail_color', self.theme['text'])
+        for x in range(self.track_origin_x - 20, self.window_width, 40):
+            pygame.draw.rect(self.background, self.theme['track'], (x, self.track_y + 30, 20, 20), border_radius=4)
+
+        pygame.draw.line(self.background, rail_color, (0, self.track_y + 25), (self.window_width, self.track_y + 25), 5)
+        pygame.draw.line(self.background, rail_color, (0, self.track_y + 55), (self.window_width, self.track_y + 55), 5)
+
+    def draw_menu(self, screen):
+        screen.blit(self.background, (0, 0))
+        if self.uses_night_sky:
+            for star in self.stars:
                 star.draw(screen)
-
-        for tree in self.trees:  # Draw trees
+        for layer in self.parallax_layers:
+            layer.draw(screen)
+        for tree in self.trees:
             tree.draw(screen)
-
-        for cloud in self.clouds:  # Draw clouds
+        for cloud in self.clouds:
             cloud.draw(screen)
-        
-        for train in self.track_trains + self.selection_trains:  # Draw trains
-            train.draw(screen, self.dark_mode)
 
-        selection_train = self.selection_trains[self.selected_train_index]  # Get selected train
-        pygame.draw.rect(screen, YELLOW, (selection_train.x - 5, selection_train.y - 5,
-                                            selection_train.width + 10, selection_train.height + 10), 3)  # Draw selection rectangle
+        menu_panel = self.layout['menu_panel']
+        draw_glass_panel(screen, menu_panel, self.theme)
 
-        for message in self.messages:  # Draw messages
+        title_font = pygame.font.Font(FONT_PATH, 64)
+        title_surface = title_font.render("Train Color Matcher", True, self.theme['text'])
+        title_rect = title_surface.get_rect(center=(menu_panel.centerx, menu_panel.top + 80))
+        screen.blit(title_surface, title_rect)
+
+        quote_y = title_rect.bottom + 20
+        for line in self.quote_lines:
+            line_surface = self.quote_font.render(line, True, self.theme['secondary'])
+            screen.blit(line_surface, (menu_panel.left + 40, quote_y))
+            quote_y += self.quote_font.get_linesize()
+
+        self.start_button.draw(screen)
+        self.quit_button.draw(screen)
+        self.theme_button.draw(screen)
+        self.mute_button.draw(screen)
+
+        version_font = pygame.font.Font(FONT_PATH, 18)
+        version_surface = version_font.render("v1.1 | Built by dundd - Feb 2025", True, self.theme['text'])
+        screen.blit(version_surface, (UI_PADDING, self.window_height - UI_PADDING - version_surface.get_height()))
+
+    def draw_game(self, screen):
+        screen.blit(self.background, (0, 0))
+        if self.uses_night_sky:
+            for star in self.stars:
+                star.draw(screen)
+        for layer in self.parallax_layers:
+            layer.draw(screen)
+        for tree in self.trees:
+            tree.draw(screen)
+        for cloud in self.clouds:
+            cloud.draw(screen)
+
+        for train in self.track_trains:
+            train.draw(screen, self.uses_night_sky)
+        for train in self.selection_trains:
+            train.draw(screen, self.uses_night_sky)
+
+        selection_train = self.selection_trains[self.selected_train_index]
+        highlight_rect = pygame.Rect(selection_train.x - 8, selection_train.y - 8, selection_train.width + 16, selection_train.height + 16)
+        pygame.draw.rect(screen, self.theme['accent'], highlight_rect, width=3, border_radius=10)
+
+        for message in self.messages:
             message.draw(screen)
 
-        font = pygame.font.Font(None, 36)  # Set font
-        
-        score_text = font.render(f'Score: {self.score}', True, self.theme['text'])  # Render score text
-        remaining_trains = len(self.track_trains) - self.current_train_index  # Calculate remaining trains
-        progress_text = font.render(f'Remaining: {remaining_trains}', True, self.theme['text'])  # Render progress text
-        high_score_text = font.render(f'High Score: {self.high_score}', True, self.theme['text'])  # Render high score text
-        
-        screen.blit(score_text, (20, 20))  # Blit score text
-        screen.blit(progress_text, (20, 60))  # Blit progress text
-        screen.blit(high_score_text, (20, 100))  # Blit high score text
-        
-        instruction_surface = self.instruction_font.render(
-            self.instruction_text, True, self.theme['text'])  # Render instruction text
-        instruction_bg = pygame.Surface((instruction_surface.get_width() + 20, 40))  # Create instruction background
-        instruction_bg.fill(self.theme['button'])  # Fill instruction background
-        instruction_bg.set_alpha(200)  # Set instruction background alpha
-        screen.blit(instruction_bg, 
-                   (WIDTH//2 - instruction_bg.get_width()//2, HEIGHT - 60))  # Blit instruction background
-        screen.blit(instruction_surface, 
-                   (WIDTH//2 - instruction_surface.get_width()//2, HEIGHT - 50))  # Blit instruction text
-        
-        self.mute_button.draw(screen)  # Draw mute button
-        self.theme_button.draw(screen)  # Draw theme button
+        self.draw_hud(screen)
+        self.draw_instruction_panel(screen)
 
-        if self.transitioning:  # If transitioning
-            transition_surface = pygame.Surface((WIDTH, HEIGHT))  # Create transition surface
-            transition_surface.fill(self.theme['background'])  # Fill transition surface
-            transition_surface.set_alpha(self.transition_alpha)  # Set transition surface alpha
-            screen.blit(transition_surface, (0, 0))  # Blit transition surface
+        self.mute_button.draw(screen)
+        self.theme_button.draw(screen)
 
-    # Handles click events
+        if self.combo_message:
+            self.combo_message.draw(screen)
+
+        if self.transitioning:
+            target_theme = self.themes[self.pending_theme_index] if self.pending_theme_index is not None else self.theme
+            overlay_color = target_theme.get('background')
+            gradient = target_theme.get('background_gradient')
+            if gradient:
+                overlay_color = gradient[0]
+            overlay = pygame.Surface((self.window_width, self.window_height), pygame.SRCALPHA)
+            overlay.fill((*overlay_color, 255))
+            overlay.set_alpha(min(255, int(self.transition_alpha)))
+            screen.blit(overlay, (0, 0))
+
+    def draw_game_over(self, screen):
+        self.draw_game(screen)
+        panel = self.layout['menu_panel']
+        draw_glass_panel(screen, panel, self.theme)
+
+        font = pygame.font.Font(FONT_PATH, 48)
+        game_over_surface = font.render("Game Over!", True, self.theme['text'])
+        screen.blit(game_over_surface, game_over_surface.get_rect(center=(panel.centerx, panel.top + 70)))
+
+        score_lines = [
+            f"Final Score: {self.score}",
+            f"Accuracy: {calculate_accuracy(self.correct_matches, self.correct_matches + self.incorrect_matches):.0f}%",
+            f"Best Combo: x{self.max_combo}"
+        ]
+        stat_y = panel.top + 140
+        for line in score_lines:
+            stat_surface = self.timeline_font.render(line, True, self.theme['text'])
+            screen.blit(stat_surface, (panel.left + 40, stat_y))
+            stat_y += self.timeline_font.get_linesize() + 4
+
+        self.play_again_button.draw(screen)
+        self.quit_button.draw(screen)
+
+    def draw_hud(self, screen):
+        hud_rect = self.layout['hud_rect']
+        draw_glass_panel(screen, hud_rect, self.theme)
+
+        heading = self.hud_font.render("Mission Stats", True, self.theme['text'])
+        screen.blit(heading, (hud_rect.left + 20, hud_rect.top + 16))
+
+        stats_font = self.timeline_font
+        accuracy = calculate_accuracy(self.correct_matches, self.correct_matches + self.incorrect_matches)
+        stats_lines = [
+            f"Score: {self.score}",
+            f"High Score: {self.high_score}",
+            f"Remaining: {len(self.track_trains) - self.current_train_index}",
+            f"Level: {self.level}",
+            f"Accuracy: {accuracy:.0f}%",
+            f"Combo: x{self.combo_count} (Best x{self.max_combo})"
+        ]
+        y = hud_rect.top + 70
+        for line in stats_lines:
+            line_surface = stats_font.render(line, True, self.theme['text'])
+            screen.blit(line_surface, (hud_rect.left + 20, y))
+            y += stats_font.get_linesize()
+
+        y += 6
+        for line in self.quote_lines:
+            quote_surface = self.quote_font.render(line, True, self.theme['secondary'])
+            screen.blit(quote_surface, (hud_rect.left + 20, y))
+            y += self.quote_font.get_linesize()
+
+        self.draw_timeline(screen)
+
+    def draw_timeline(self, screen):
+        scroll_rect = self.layout['scroll_rect']
+        draw_glass_panel(screen, scroll_rect, self.theme)
+        line_height = self.timeline_font.get_linesize()
+        wrap_width = getattr(self, 'timeline_wrap_width', scroll_rect.width - 32)
+
+        cached_lines = []
+        total_height = 0
+        for entry in self.timeline_entries:
+            lines = wrap_text(entry['text'], self.timeline_font, wrap_width)
+            cached_lines.append((entry, lines))
+            total_height += len(lines) * line_height + 10
+
+        self.timeline_content_height = total_height
+        max_offset = max(0, total_height - scroll_rect.height + 16)
+        self.scroll_offset = max(0, min(self.scroll_offset, max_offset))
+
+        clip_rect = scroll_rect.inflate(-12, -12)
+        screen.set_clip(clip_rect)
+        y = clip_rect.top - self.scroll_offset
+        base_time = cached_lines[0][0]['time'] if cached_lines else 0
+        for entry, lines in cached_lines:
+            timestamp = (entry['time'] - base_time) / 1000.0
+            time_surface = self.timeline_font.render(f"{timestamp:>5.1f}s", True, self.theme['accent'])
+            screen.blit(time_surface, (clip_rect.left, y))
+            y += line_height
+            for line in lines:
+                line_surface = self.timeline_font.render(line, True, entry['color'])
+                screen.blit(line_surface, (clip_rect.left, y))
+                y += line_height
+            y += 6
+        screen.set_clip(None)
+
+    def draw_instruction_panel(self, screen):
+        instruction_rect = self.layout['instruction_rect']
+        draw_glass_panel(screen, instruction_rect, self.theme)
+        if not self.instruction_lines:
+            self.instruction_lines = [self.instruction_text]
+        line_height = self.instruction_font.get_linesize()
+        total_height = len(self.instruction_lines) * line_height
+        start_y = instruction_rect.centery - total_height // 2
+        for idx, line in enumerate(self.instruction_lines):
+            line_surface = self.instruction_font.render(line, True, self.theme['text'])
+            screen.blit(line_surface, (instruction_rect.left + 20, start_y + idx * line_height))
+
     def handle_click(self, pos):
-        if self.theme_button.is_clicked(pos):  # If the theme button is clicked
-            self.toggle_theme()  # Toggle theme
-            self.sound_manager.play('click')  # Play click sound
+        if self.mute_button.is_clicked(pos):
+            self.sound_manager.muted = not self.sound_manager.muted
+            self.mute_button.text = "🔈" if self.sound_manager.muted else "🔊"
             return True
 
-        if self.state == MENU:  # If the state is MENU
-            if self.start_button.is_clicked(pos):  # If the start button is clicked
-                self.start_button.create_particles()  # Create particles
-                self.sound_manager.play('click')  # Play click sound
-                self.state = PLAYING  # Set state to PLAYING
-                self.reset_game()  # Reset the game
-            elif self.quit_button.is_clicked(pos):  # If the quit button is clicked
+        if self.theme_button.is_clicked(pos):
+            self.toggle_theme()
+            self.sound_manager.play('click')
+            return True
+
+        if self.state == MENU:
+            if self.start_button.is_clicked(pos):
+                self.start_button.create_particles()
+                self.sound_manager.play('click')
+                self.state = PLAYING
+                self.reset_game()
+            elif self.quit_button.is_clicked(pos):
                 return False
-                
-        elif self.state == PLAYING:  # If the state is PLAYING
+
+        elif self.state == PLAYING:
             clicked = False
-            for i, selection_train in enumerate(self.selection_trains):  # Check if a selection train is clicked
-                if (selection_train.x < pos[0] < selection_train.x + selection_train.width and
-                    selection_train.y < pos[1] < selection_train.y + selection_train.height):
+            for index, selection_train in enumerate(self.selection_trains):
+                if selection_train.x <= pos[0] <= selection_train.x + selection_train.width and selection_train.y <= pos[1] <= selection_train.y + selection_train.height:
                     clicked = True
-                    self.selected_train_index = i  # Set selected train index
-                    self.match_train()  # Match train
+                    self.selected_train_index = index
+                    self.match_train()
                     break
             if not clicked:
-                self.add_message("Please click on a train!", self.theme['accent'], 0.5)  # Add click on train message
+                self.add_message("Please click on a train!", self.theme['accent'], 0.5)
 
-        elif self.state == GAME_OVER:  # If the state is GAME_OVER
-            if self.play_again_button.is_clicked(pos):  # If the play again button is clicked
-                self.sound_manager.play('click')  # Play click sound
-                self.state = PLAYING  # Set state to PLAYING
-                self.reset_game()  # Reset the game
-            elif self.quit_button.is_clicked(pos):  # If the quit button is clicked
+        elif self.state == GAME_OVER:
+            if self.play_again_button.is_clicked(pos):
+                self.sound_manager.play('click')
+                self.state = PLAYING
+                self.reset_game()
+            elif self.quit_button.is_clicked(pos):
                 return False
         return True
 
-    # Updates the game
     def update(self, dt: float) -> None:
-        super().update()  # Call superclass update method
-        for cloud in self.clouds:  # Update clouds
+        Game.update(self)
+        for cloud in self.clouds:
             cloud.update(dt)
-
-        for button in [self.start_button, self.quit_button, self.play_again_button, self.theme_button]:  # Update buttons
+        for button in [self.start_button, self.quit_button, self.play_again_button, self.theme_button]:
             button.update(dt)
-
-        if self.transitioning:  # If transitioning
-            self.transition_alpha += TRANSITION_SPEED * dt  # Update transition alpha
-            if self.transition_alpha >= 255:  # If transition is complete
-                self.complete_transition()  # Complete transition
-
-        for train in self.track_trains:  # Update track trains
-            train.move()
-
-        for message in self.messages:  # Update messages
-            message.update(dt)
-        self.messages = [msg for msg in self.messages if not msg.should_remove()]  # Remove old messages
-
-    # Creates modern buttons
-    def create_modern_buttons(self):
-        self.start_button = ModernButton(
-            WIDTH//2 - 100, HEIGHT//2 - 50, 200, 50,
-            "Start Game", self.theme['primary'], self.theme, self.sound_manager
-        )
-        self.quit_button = ModernButton(
-            WIDTH//2 - 100, HEIGHT//2 + 50, 200, 50,
-            "Quit", self.theme['error'], self.theme, self.sound_manager
-        )
-        self.play_again_button = ModernButton(
-            WIDTH//2 - 100, HEIGHT//2 + 50, 200, 50,
-            "Play Again", self.theme['primary'], self.theme, self.sound_manager
-        )
+        if self.transitioning:
+            self.transition_alpha += TRANSITION_SPEED * dt
+            if self.transition_alpha >= 255:
+                self.complete_transition()
 
     def complete_transition(self):
-        """Completes the theme transition by switching themes and resetting transition state."""
-        self.dark_mode = not self.dark_mode
-        self.theme = DARK_THEME if self.dark_mode else LIGHT_THEME
-        self.theme_button.text = "LIGHT" if self.dark_mode else "DARK"
-        self.theme_button.color = self.theme['button']
+        if self.pending_theme_index is None:
+            self.transitioning = False
+            self.transition_alpha = 0
+            return
+        self.theme_index = self.pending_theme_index
+        self.pending_theme_index = None
+        self.theme = self.themes[self.theme_index]
+        self.dark_mode = self.uses_night_sky
+        self.refresh_button_palette()
+        self.recalculate_layout(self.window_width, self.window_height)
         self.create_background()
         self.transitioning = False
         self.transition_alpha = 0
+
+    def handle_resize(self, width: int, height: int) -> None:
+        old_width = getattr(self, 'window_width', width)
+        old_height = getattr(self, 'window_height', height)
+        self.recalculate_layout(width, height)
+        self.background = pygame.Surface((self.window_width, self.window_height), pygame.SRCALPHA)
+        self.create_background()
+        for layer in self.parallax_layers:
+            if hasattr(layer, 'image'):
+                layer.y = self.window_height - layer.image.get_height() + getattr(layer, 'offset_y', 0)
+        if old_width and old_height:
+            ratio_x = self.window_width / max(old_width, 1)
+            ratio_y = self.window_height / max(old_height, 1)
+            for tree in self.trees:
+                tree.x = int(tree.x * ratio_x)
+                tree.y = self.window_height - 100
+            for cloud in self.clouds:
+                cloud.x = cloud.x * ratio_x
+                cloud.y = min(self.window_height - 50, max(0, cloud.y * ratio_y))
+            if self.uses_night_sky:
+                for star in self.stars:
+                    star.x = int(star.x * ratio_x)
+                    star.y = int(star.y * ratio_y)
+
+    def handle_scroll(self, amount: int) -> None:
+        max_offset = max(0, self.timeline_content_height - self.layout['scroll_rect'].height + 16)
+        self.scroll_offset = max(0, min(self.scroll_offset - amount * 24, max_offset))
+
+    def level_up(self):
+        super().level_up()
+        self.recalculate_layout(self.window_width, self.window_height)
+        self.create_background()
 
 # Combo message class for displaying combo messages
 class ComboMessage(Message):
@@ -1179,7 +1708,10 @@ class ComboMessage(Message):
         self.start_time = pygame.time.get_ticks()  # Set start time
         self.initial_font_size = font_size  # Set initial font size
         self.scale = 1.0  # Set scale
-        self.position = (WIDTH//2, HEIGHT//3)  # Set position
+        surface = pygame.display.get_surface()
+        width = surface.get_width() if surface else WIDTH
+        height = surface.get_height() if surface else HEIGHT
+        self.position = (width // 2, height // 3)  # Set position
         self.color = color  # Set color
 
     # Updates the combo message
@@ -1208,10 +1740,11 @@ class ComboMessage(Message):
 
 # Main function to run the game
 def main():
+    global WIDTH, HEIGHT
     pygame.init()  # Initialize Pygame
     game = ModernGame()  # Create game instance
     clock = pygame.time.Clock()  # Create clock
-    screen = pygame.display.set_mode((WIDTH, HEIGHT))  # Create display
+    screen = set_window_mode((WIDTH, HEIGHT))  # Create display
     pygame.display.set_caption(WINDOW_TITLE)  # Set window title
     
     running = True  # Set running state
@@ -1221,12 +1754,20 @@ def main():
         for event in pygame.event.get():  # Handle events
             if event.type == pygame.QUIT:  # If quit event
                 running = False
+            elif event.type == pygame.VIDEORESIZE:
+                new_width = max(event.w, MIN_WINDOW_WIDTH)
+                new_height = max(event.h, MIN_WINDOW_HEIGHT)
+                screen = set_window_mode((new_width, new_height))
+                game.handle_resize(new_width, new_height)
+                WIDTH, HEIGHT = new_width, new_height
             elif event.type == pygame.MOUSEBUTTONDOWN:  # If mouse button down event
                 if not game.handle_click(event.pos):  # Handle click
                     running = False
+            elif event.type == pygame.MOUSEWHEEL:
+                game.handle_scroll(event.y)
             elif event.type == pygame.MOUSEMOTION:  # If mouse motion event
-                for button in [game.theme_button, game.start_button, 
-                             game.quit_button, game.play_again_button]:
+                hover_targets = [game.theme_button, game.start_button, game.quit_button, game.play_again_button]
+                for button in hover_targets:
                     button.handle_hover(event.pos)  # Handle hover
             elif event.type == pygame.KEYDOWN:  # If key down event
                 game.handle_keyboard_input(event)  # Handle keyboard input
