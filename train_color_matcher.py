@@ -1510,6 +1510,14 @@ class Game:
             identifier = COLOR_IDENTIFIERS.get(color, {}).get("symbol", "")
             self.selection_trains.append(Train(start_x + i * selection_spacing, 400, color, identifier=identifier))
 
+        if self.selection_trains:
+            if hasattr(self, "selected_train_index"):
+                self.selected_train_index = min(self.selected_train_index, len(self.selection_trains) - 1)
+            else:
+                self.selected_train_index = 0
+        elif hasattr(self, "selected_train_index"):
+            self.selected_train_index = 0
+
     # Draws the game
     def draw(self, screen):
         screen.fill(self.theme['background'])  # Fill the screen

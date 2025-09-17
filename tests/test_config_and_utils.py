@@ -1,92 +1,26 @@
 import os
 import sys
-import types
-import importlib.util
 from pathlib import Path
 import unittest
 
-# Ensure pygame can initialize in headless test environments and provide a stub when unavailable.
+# Ensure pygame can initialize in headless test environments.
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
-try:
-    import pygame  # type: ignore
-except ModuleNotFoundError:  # pragma: no cover - executed in CI where pygame is unavailable
-    pygame = types.ModuleType("pygame")
-    pygame.error = Exception
+TESTS_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = TESTS_DIR.parent
 
-    class _DummySurface:
-        def __init__(self, size=(0, 0), *_args, **_kwargs):
-            self._size = size
+for path in (TESTS_DIR, PROJECT_ROOT):
+    string_path = str(path)
+    if string_path not in sys.path:
+        sys.path.insert(0, string_path)
 
-        def fill(self, *_args, **_kwargs):
-            return None
+from pygame_stub import setup_pygame_stub
 
-        def blit(self, *_args, **_kwargs):
-            return None
+setup_pygame_stub()
 
-        def get_width(self):
-            return self._size[0]
-
-        def get_height(self):
-            return self._size[1]
-
-        def set_alpha(self, *_args, **_kwargs):
-            return None
-
-        def copy(self):
-            return _DummySurface(self._size)
-
-    class _DummyFont:
-        def __init__(self, *_args, **_kwargs):
-            pass
-
-        def size(self, text):
-            return (len(text) * 8, 16)
-
-        def render(self, text, *_args, **_kwargs):
-            return _DummySurface((len(text) * 8, 16))
-
-    def _noop(*_args, **_kwargs):
-        return None
-
-    pygame.mixer = types.SimpleNamespace(pre_init=_noop)
-    pygame.init = _noop
-    pygame.quit = _noop
-    pygame.font = types.SimpleNamespace(init=_noop, Font=_DummyFont)
-    pygame.time = types.SimpleNamespace(get_ticks=lambda: 0, Clock=lambda: types.SimpleNamespace(tick=lambda *_args: 16))
-    pygame.transform = types.SimpleNamespace(scale=lambda surf, size: _DummySurface(size))
-    pygame.event = types.SimpleNamespace(get=lambda: [])
-
-    class _DisplayModule:
-        def set_mode(self, size):
-            return _DummySurface(size)
-
-        def set_caption(self, *_args, **_kwargs):
-            return None
-
-    pygame.display = _DisplayModule()
-    pygame.SRCALPHA = 0
-    pygame.Surface = _DummySurface
-
-    class _Rect:
-        def __init__(self, x, y, width, height):
-            self.x = x
-            self.y = y
-            self.width = width
-            self.height = height
-
-    pygame.Rect = _Rect
-
-    sys.modules["pygame"] = pygame
-
-MODULE_PATH = Path(__file__).resolve().parents[1] / "Train-Color-Matcher.py"
-SPEC = importlib.util.spec_from_file_location("train_color_matcher", MODULE_PATH)
-train_color_matcher = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(train_color_matcher)
-
-# Import (or stub) pygame after loading the module to access font helpers in the tests themselves.
 import pygame  # type: ignore  # noqa: E402
+import train_color_matcher  # noqa: E402
 
 
 class ConfigValidatorTests(unittest.TestCase):
@@ -106,6 +40,12 @@ class ConfigValidatorTests(unittest.TestCase):
         self.assertEqual(result["height"], defaults["height"])
         self.assertEqual(result["title"], defaults["title"])
 
+        valid_config = {"window": {"width": 1024, "height": 768, "title": "My Game"}}
+        valid_result = train_color_matcher.ConfigValidator.validate_window(valid_config)
+        self.assertEqual(valid_result["width"], 1024)
+        self.assertEqual(valid_result["height"], 768)
+        self.assertEqual(valid_result["title"], "My Game")
+
     def test_validate_colors_falls_back_to_defaults(self):
         defaults = train_color_matcher.ConfigValidator.validate_colors({})
         result = train_color_matcher.ConfigValidator.validate_colors(
@@ -113,6 +53,11 @@ class ConfigValidatorTests(unittest.TestCase):
         )
         self.assertEqual(result["red"], defaults["red"])
         self.assertEqual(result["green"], defaults["green"])
+
+        valid_colors = {"colors": {"red": [1, 2, 3], "yellow": [10, 20, 30]}}
+        valid_result = train_color_matcher.ConfigValidator.validate_colors(valid_colors)
+        self.assertEqual(valid_result["red"], [1, 2, 3])
+        self.assertEqual(valid_result["yellow"], [10, 20, 30])
 
 
 class WrapTextTests(unittest.TestCase):
@@ -128,9 +73,7 @@ class WrapTextTests(unittest.TestCase):
         message = "red blue green yellow"
         max_width = self.font.size("red blue")[0] + 4
         lines = train_color_matcher.wrap_text(message, self.font, max_width)
-        self.assertGreater(len(lines), 1)
-        for line in lines:
-            self.assertLessEqual(self.font.size(line)[0], max_width)
+        self.assertEqual(lines, ["red blue", "green", "yellow"])
 
 
 if __name__ == "__main__":
