@@ -6,6 +6,9 @@ import sys
 from pathlib import Path
 import unittest
 
+project_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(project_root))
+
 from tests.pygame_stub import install as install_pygame_stub
 
 

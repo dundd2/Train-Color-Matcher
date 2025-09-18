@@ -1,3 +1,4 @@
+# -*- coding: cp1252 -*-
 # By dundd2 
 # Last update:Feb 2025
 # Train-Color-Matcher V1.1
@@ -8,6 +9,10 @@ import random  # Used for generating random numbers
 import os  # Used for handling file paths
 import math  # Used for mathematical operations
 from typing import List, Dict, Tuple  # Used for type hinting
+import warnings
+
+warnings.filterwarnings("ignore", message="pkg_resources is deprecated as an API", category=UserWarning)
+
 
 # Game Constants: Define fixed values used throughout the game
 FRAMERATE = 60  # Frames per second for the game
@@ -16,6 +21,8 @@ MIN_WINDOW_HEIGHT = 600  # Minimum window height
 BUTTON_WIDTH = 200  # Standard button width
 BUTTON_HEIGHT = 50  # Standard button height
 MUTE_BUTTON_SIZE = 50  # Size of the mute button
+MUTE_BUTTON_LABEL_ON = "ON"  # Label when sound is enabled
+MUTE_BUTTON_LABEL_OFF = "OFF"  # Label when sound is muted
 TRAIN_SPACING = 80  # Spacing between trains
 RAILROAD_TIE_SPACING = 30  # Spacing between railroad ties
 RAILROAD_HEIGHT = 240  # Height of the railroad
@@ -28,6 +35,8 @@ TRANSITION_SPEED = 500  # Speed of theme transitions
 TREE_COUNT = 5  # Number of trees in the background
 CLOUD_COUNT = 3  # Number of clouds in the background
 STAR_COUNT = 50  # Number of stars in the background
+BUILDING_COUNT = 6  # Number of skyline buildings
+HOUSE_COUNT = 4  # Number of houses in the background
 UI_PADDING = 20  # Padding for UI elements
 UI_LINE_HEIGHT = 40  # Line height for UI elements
 INSTRUCTION_HEIGHT = 60  # Height of the instruction text background
@@ -789,11 +798,11 @@ class Game:
         self.sound_manager = SoundManager()  # Initialize sound manager
         self.messages = []  # Initialize messages
         self.mute_button = Button(
-            self.window_width - MUTE_BUTTON_SIZE - UI_PADDING,
+            UI_PADDING,
             UI_PADDING,
             MUTE_BUTTON_SIZE,
             MUTE_BUTTON_SIZE,
-            "🔊",
+            MUTE_BUTTON_LABEL_OFF if self.sound_manager.muted else MUTE_BUTTON_LABEL_ON,
             self.theme['button'],
             self.theme['text']
         )  # Create mute button
@@ -971,7 +980,7 @@ class Game:
     def handle_click(self, pos):
         if self.mute_button.is_clicked(pos):  # If the mute button is clicked
             self.sound_manager.muted = not self.sound_manager.muted  # Toggle mute state
-            self.mute_button.text = "🔊" if not self.sound_manager.muted else "🔈"  # Update mute button text
+            self.update_mute_button_label()  # Refresh mute button label
             return True
 
         if self.state == MENU:  # If the state is MENU
@@ -1137,6 +1146,121 @@ class Star:
         color = (self.brightness, self.brightness, self.brightness)  # Set color
         pygame.draw.circle(screen, color, (self.x, self.y), self.size)  # Draw the star
 
+# Building and house background elements
+class Building:
+    def __init__(self, width_ratio: float, height_ratio: float, x_ratio: float):
+        self.width_ratio = width_ratio
+        self.height_ratio = height_ratio
+        self.x_ratio = x_ratio
+        self.day_color = random.choice([(205, 210, 224), (190, 198, 214), (220, 206, 188), (210, 202, 195)])
+        self.night_color = random.choice([(70, 78, 100), (60, 68, 92), (82, 90, 120), (74, 84, 112)])
+        self.day_window_color = (245, 248, 252)
+        self.night_window_color = (255, 214, 120)
+        self.rect = pygame.Rect(0, 0, 0, 0)
+        self.window_rects: List[pygame.Rect] = []
+
+    def reposition(self, window_width: int, window_height: int, base_y: int) -> None:
+        width = max(60, int(window_width * self.width_ratio))
+        height = max(120, int(window_height * self.height_ratio))
+        center_x = int(window_width * self.x_ratio)
+        left = max(UI_PADDING, center_x - width // 2)
+        left = min(left, window_width - UI_PADDING - width)
+        self.rect = pygame.Rect(left, base_y - height, width, height)
+        self._rebuild_windows()
+
+    def _rebuild_windows(self) -> None:
+        self.window_rects.clear()
+        cols = max(2, self.rect.width // 40)
+        rows = max(2, self.rect.height // 50)
+        padding_x = 8
+        padding_y = 12
+        available_width = self.rect.width - padding_x * (cols + 1)
+        available_height = self.rect.height - padding_y * (rows + 1)
+        if available_width <= 0 or available_height <= 0:
+            return
+        window_width = available_width / cols
+        window_height = available_height / rows
+        if window_width < 6 or window_height < 6:
+            return
+        for row in range(rows):
+            for col in range(cols):
+                x = int(self.rect.left + padding_x * (col + 1) + window_width * col)
+                y = int(self.rect.top + padding_y * (row + 1) + window_height * row)
+                self.window_rects.append(pygame.Rect(x, y, int(window_width), int(window_height)))
+
+    def draw(self, screen: pygame.Surface, night_mode: bool) -> None:
+        color = self.night_color if night_mode else self.day_color
+        pygame.draw.rect(screen, color, self.rect, border_radius=6)
+        outline_color = (0, 0, 0, 30) if night_mode else (0, 0, 0, 40)
+        try:
+            pygame.draw.rect(screen, outline_color, self.rect, width=1, border_radius=6)
+        except TypeError:
+            pygame.draw.rect(screen, (40, 40, 40), self.rect, width=1, border_radius=6)
+        window_color = self.night_window_color if night_mode else self.day_window_color
+        for window in self.window_rects:
+            pygame.draw.rect(screen, window_color, window, border_radius=2)
+
+
+class House:
+    def __init__(self, width_ratio: float, height_ratio: float, x_ratio: float):
+        self.width_ratio = width_ratio
+        self.height_ratio = height_ratio
+        self.x_ratio = x_ratio
+        self.roof_ratio = random.uniform(0.35, 0.5)
+        self.day_body_color = random.choice([(232, 219, 202), (224, 210, 198), (236, 226, 210)])
+        self.night_body_color = random.choice([(90, 82, 100), (98, 90, 112), (82, 74, 96)])
+        self.day_roof_color = random.choice([(180, 90, 90), (160, 102, 82), (188, 120, 96)])
+        self.night_roof_color = random.choice([(120, 60, 70), (110, 70, 80), (100, 64, 74)])
+        self.window_day_color = (250, 250, 240)
+        self.window_night_color = (255, 220, 150)
+        self.body_rect = pygame.Rect(0, 0, 0, 0)
+        self.roof_points: List[Tuple[int, int]] = []
+        self.window_rects: List[pygame.Rect] = []
+        self.door_rect = pygame.Rect(0, 0, 0, 0)
+
+    def reposition(self, window_width: int, window_height: int, base_y: int) -> None:
+        width = max(50, int(window_width * self.width_ratio))
+        height = max(60, int(window_height * self.height_ratio))
+        center_x = int(window_width * self.x_ratio)
+        left = max(UI_PADDING, center_x - width // 2)
+        left = min(left, window_width - UI_PADDING - width)
+        body_height = max(30, int(height * (1 - self.roof_ratio)))
+        self.body_rect = pygame.Rect(left, base_y - body_height, width, body_height)
+        roof_height = max(14, int(height * self.roof_ratio))
+        roof_top = self.body_rect.top - roof_height
+        self.roof_points = [
+            (self.body_rect.centerx, roof_top),
+            (self.body_rect.right + 6, self.body_rect.top),
+            (self.body_rect.left - 6, self.body_rect.top)
+        ]
+        door_width = max(12, width // 6)
+        door_height = max(26, body_height - 12)
+        door_x = self.body_rect.centerx - door_width // 2
+        door_y = self.body_rect.bottom - door_height
+        self.door_rect = pygame.Rect(door_x, door_y, door_width, door_height)
+        window_size = max(10, width // 7)
+        window_y = self.body_rect.top + max(6, body_height // 4)
+        window_offset = max(8, width // 5)
+        left_window_x = self.body_rect.left + window_offset - window_size // 2
+        right_window_x = self.body_rect.right - window_offset - window_size // 2
+        self.window_rects = [
+            pygame.Rect(left_window_x, window_y, window_size, window_size),
+            pygame.Rect(right_window_x, window_y, window_size, window_size)
+        ]
+
+    def draw(self, screen: pygame.Surface, night_mode: bool) -> None:
+        body_color = self.night_body_color if night_mode else self.day_body_color
+        roof_color = self.night_roof_color if night_mode else self.day_roof_color
+        window_color = self.window_night_color if night_mode else self.window_day_color
+        door_color = (90, 70, 60) if night_mode else (130, 100, 90)
+        pygame.draw.rect(screen, body_color, self.body_rect, border_radius=6)
+        pygame.draw.polygon(screen, roof_color, self.roof_points)
+        pygame.draw.rect(screen, door_color, self.door_rect, border_radius=3)
+        for window in self.window_rects:
+            pygame.draw.rect(screen, window_color, window, border_radius=2)
+
+
+
 # Modern game class with additional features
 class ModernGame(Game):
     """Modern presentation of the game with responsive layouts and dynamic themes."""
@@ -1150,7 +1274,7 @@ class ModernGame(Game):
         self.window_height = HEIGHT
         self.layout: Dict[str, pygame.Rect] = {}
         self.instruction_text = "Match the trains starting from the left!"
-        self.motivation_quote = "Stay fluid and focused—the right color keeps the cargo on track."
+        self.motivation_quote = "Stay fluid and focused?�the right color keeps the cargo on track."
         self.timeline_entries: List[Dict[str, object]] = []
         self.timeline_content_height = 0
         self.scroll_offset = 0
@@ -1189,6 +1313,7 @@ class ModernGame(Game):
         self.trees = [Tree(random.randint(50, self.window_width - 50), self.window_height - 100) for _ in range(TREE_COUNT)]
         self.clouds = [Cloud(random.randint(0, self.window_width), random.randint(*CLOUD_HEIGHT_RANGE)) for _ in range(CLOUD_COUNT)]
         self.stars = [Star(random.randint(0, self.window_width), random.randint(0, self.window_height // 2)) for _ in range(STAR_COUNT)]
+        self.generate_structures()
 
         try:
             self.parallax_layers = [
@@ -1230,25 +1355,129 @@ class ModernGame(Game):
         total_selection_span = self.selection_spacing * (len(TRAIN_COLORS) - 1)
         self.selection_origin_x = int(width // 2 - total_selection_span / 2 - CONFIG['train']['width'] / 2)
 
-        hud_width = max(280, int(width * 0.28))
+        hud_width = max(400, int(width * 0.32))
         hud_height = max(240, int(height * 0.4))
-        hud_rect = pygame.Rect(width - hud_width - UI_PADDING, UI_PADDING, hud_width, min(hud_height, height - UI_PADDING * 2 - 120))
+        hud_rect = pygame.Rect(
+            width - hud_width - UI_PADDING,
+            UI_PADDING,
+            hud_width,
+            min(hud_height, height - UI_PADDING * 2 - 120)
+        )
         instruction_width = min(int(width * 0.6), width - UI_PADDING * 2)
-        instruction_rect = pygame.Rect(width // 2 - instruction_width // 2, height - 90, instruction_width, 70)
+        instruction_rect = pygame.Rect(
+            width // 2 - instruction_width // 2,
+            height - 90,
+            instruction_width,
+            70
+        )
 
-        theme_button_rect = pygame.Rect(width - 120 - UI_PADDING - MUTE_BUTTON_SIZE, UI_PADDING, 110, 44)
-        mute_rect = pygame.Rect(width - MUTE_BUTTON_SIZE - UI_PADDING, UI_PADDING, MUTE_BUTTON_SIZE, MUTE_BUTTON_SIZE)
+        theme_button_width = 120
+        theme_button_height = 44
+        button_offset = 16
+        theme_button_left = max(UI_PADDING, hud_rect.left - theme_button_width - button_offset)
+        theme_button_rect = pygame.Rect(
+            theme_button_left,
+            hud_rect.top + button_offset,
+            theme_button_width,
+            theme_button_height
+        )
+        mute_x = theme_button_rect.left + (theme_button_rect.width - MUTE_BUTTON_SIZE) // 2
+        mute_rect = pygame.Rect(
+            mute_x,
+            theme_button_rect.bottom + 10,
+            MUTE_BUTTON_SIZE,
+            MUTE_BUTTON_SIZE
+        )
 
         menu_panel_width = min(int(width * 0.6), width - UI_PADDING * 2)
-        menu_panel_rect = pygame.Rect(width // 2 - menu_panel_width // 2, int(height * 0.18), menu_panel_width, int(height * 0.5))
+        menu_panel_rect = pygame.Rect(
+            width // 2 - menu_panel_width // 2,
+            int(height * 0.18),
+            menu_panel_width,
+            int(height * 0.5)
+        )
         button_width = min(360, max(260, int(menu_panel_rect.width * 0.65)))
         button_height = 60
-        start_rect = pygame.Rect(width // 2 - button_width // 2, menu_panel_rect.bottom - button_height * 2 - 30, button_width, button_height)
-        quit_rect = pygame.Rect(start_rect.x, start_rect.bottom + 20, button_width, button_height)
+        start_rect = pygame.Rect(
+            width // 2 - button_width // 2,
+            menu_panel_rect.bottom - button_height * 2 - 30,
+            button_width,
+            button_height
+        )
+        quit_rect = pygame.Rect(
+            start_rect.x,
+            start_rect.bottom + 20,
+            button_width,
+            button_height
+        )
         play_again_rect = pygame.Rect(start_rect)
 
-        scroll_height = max(110, hud_rect.height - 190)
-        scroll_rect = pygame.Rect(hud_rect.left + 16, hud_rect.top + 150, hud_rect.width - 32, scroll_height)
+        stats_lines = self._build_stats_lines()
+        wrap_width = max(220, hud_rect.width - 40)
+        if hasattr(self, 'instruction_font'):
+            self.instruction_lines = wrap_text(
+                self.instruction_text,
+                self.instruction_font,
+                max(120, instruction_rect.width - 40)
+            )
+        else:
+            self.instruction_lines = [self.instruction_text]
+
+        if hasattr(self, 'quote_font'):
+            menu_wrap_width = max(220, menu_panel_rect.width - 80)
+            hud_quote_wrap = min(240, max(200, hud_rect.width - 200))
+            self.menu_quote_lines = wrap_text(self.motivation_quote, self.quote_font, menu_wrap_width)
+            self.default_hud_quote_lines = wrap_text(self.motivation_quote, self.quote_font, hud_quote_wrap)
+        else:
+            self.menu_quote_lines = [self.motivation_quote]
+            self.default_hud_quote_lines = [self.motivation_quote]
+
+        heading_top = hud_rect.top + 16
+        available_width = hud_rect.width - 40
+        column_gap = 24
+        timeline_min_width = 120
+        text_padding = 8
+        stats_width = 0
+        if hasattr(self, 'timeline_font'):
+            stats_width = max((self.timeline_font.size(line)[0] for line in stats_lines), default=0)
+        quote_width = 0
+        if hasattr(self, 'quote_font') and self.default_hud_quote_lines:
+            quote_width = max((self.quote_font.size(line)[0] for line in self.default_hud_quote_lines), default=0)
+        heading_width = self.hud_font.size("Mission Stats")[0] if hasattr(self, 'hud_font') else 0
+        base_stats_width = max(stats_width, quote_width, heading_width)
+        desired_stats_width = max(200, base_stats_width + text_padding)
+        can_two_column = available_width >= timeline_min_width + column_gap + desired_stats_width
+
+        if can_two_column:
+            stats_column_width = min(desired_stats_width, available_width - timeline_min_width - column_gap)
+            timeline_width = available_width - stats_column_width - column_gap
+            timeline_height = max(120, hud_rect.height - 32)
+            stats_left = hud_rect.left + 20
+            stats_right = stats_left + stats_column_width
+            timeline_left = max(stats_right + column_gap, hud_rect.right - 20 - timeline_width)
+            timeline_right_limit = hud_rect.right - 20
+            timeline_width = min(timeline_width, max(timeline_min_width, timeline_right_limit - timeline_left))
+            timeline_rect = pygame.Rect(
+                timeline_left,
+                heading_top,
+                timeline_width,
+                timeline_height
+            )
+            if timeline_rect.width < timeline_min_width:
+                can_two_column = False
+            else:
+                if timeline_rect.bottom > hud_rect.bottom - 16:
+                    timeline_rect.height = max(96, hud_rect.bottom - 16 - timeline_rect.top)
+                self.layout['scroll_rect'] = timeline_rect
+                if hasattr(self, 'timeline_font'):
+                    self.timeline_wrap_width = max(120, timeline_rect.width - 32)
+        if not can_two_column:
+            scroll_rect = self._compute_scroll_rect(hud_rect, stats_lines, self.default_hud_quote_lines)
+            self.layout['scroll_rect'] = scroll_rect
+            if hasattr(self, 'timeline_font'):
+                self.timeline_wrap_width = max(120, scroll_rect.width - 32)
+
+        self.layout['hud_two_column'] = can_two_column
 
         self.layout['hud_rect'] = hud_rect
         self.layout['instruction_rect'] = instruction_rect
@@ -1258,28 +1487,18 @@ class ModernGame(Game):
         self.layout['start_button'] = start_rect
         self.layout['quit_button'] = quit_rect
         self.layout['play_again_button'] = play_again_rect
-        self.layout['scroll_rect'] = scroll_rect
-
-        wrap_width = max(220, hud_rect.width - 40)
-        if hasattr(self, 'instruction_font'):
-            self.instruction_lines = wrap_text(self.instruction_text, self.instruction_font, max(120, instruction_rect.width - 40))
-        else:
-            self.instruction_lines = [self.instruction_text]
-
-        if hasattr(self, 'quote_font'):
-            self.quote_lines = wrap_text(self.motivation_quote, self.quote_font, wrap_width)
-        else:
-            self.quote_lines = [self.motivation_quote]
-
-        if hasattr(self, 'timeline_font'):
-            self.timeline_wrap_width = max(120, scroll_rect.width - 32)
 
         if hasattr(self, 'mute_button'):
             self.mute_button.rect = pygame.Rect(mute_rect)
             self.mute_button.set_colors(self.theme['button'], self.theme['text'])
 
         if hasattr(self, 'theme_button'):
-            self.theme_button.apply_layout(theme_button_rect.x, theme_button_rect.y, theme_button_rect.width, theme_button_rect.height)
+            self.theme_button.apply_layout(
+                theme_button_rect.x,
+                theme_button_rect.y,
+                theme_button_rect.width,
+                theme_button_rect.height
+            )
 
         if hasattr(self, 'start_button'):
             self.update_button_layout()
@@ -1294,6 +1513,10 @@ class ModernGame(Game):
                 train.x = self.selection_origin_x + index * self.selection_spacing
                 train.y = self.selection_y
                 train.bounds_width = self.window_width
+
+
+        if hasattr(self, 'buildings'):
+            self.update_structures_layout()
 
     def update_button_layout(self) -> None:
         start_rect = self.layout['start_button']
@@ -1315,6 +1538,103 @@ class ModernGame(Game):
         self.theme_button.text = self.next_theme_label()
         if hasattr(self, 'mute_button'):
             self.mute_button.set_colors(self.theme['button'], self.theme['text'])
+            self.update_mute_button_label()
+
+    def update_mute_button_label(self) -> None:
+        if hasattr(self, 'mute_button'):
+            self.mute_button.text = MUTE_BUTTON_LABEL_OFF if self.sound_manager.muted else MUTE_BUTTON_LABEL_ON
+
+    def generate_structures(self) -> None:
+        self.buildings = []
+        if BUILDING_COUNT > 0:
+            slot_size = 1.0 / BUILDING_COUNT
+            for index in range(BUILDING_COUNT):
+                width_ratio = random.uniform(0.06, 0.11)
+                height_ratio = random.uniform(0.22, 0.34)
+                center_ratio = index * slot_size + random.uniform(0.2, 0.8) * slot_size
+                center_ratio = max(0.05, min(0.95, center_ratio))
+                self.buildings.append(Building(width_ratio, height_ratio, center_ratio))
+
+        self.houses = []
+        if HOUSE_COUNT > 0:
+            slot_size = 1.0 / HOUSE_COUNT
+            for index in range(HOUSE_COUNT):
+                width_ratio = random.uniform(0.05, 0.09)
+                height_ratio = random.uniform(0.14, 0.2)
+                center_ratio = index * slot_size + random.uniform(0.2, 0.8) * slot_size
+                center_ratio = max(0.05, min(0.95, center_ratio))
+                self.houses.append(House(width_ratio, height_ratio, center_ratio))
+
+        self.update_structures_layout()
+
+    def update_structures_layout(self) -> None:
+        if not hasattr(self, 'buildings'):
+            return
+
+        skyline_upper_bound = self.track_y - 50
+        skyline_target = int(self.track_y - self.window_height * 0.18)
+        if skyline_upper_bound <= 40:
+            skyline_base = max(20, skyline_upper_bound)
+        else:
+            skyline_base = max(40, min(skyline_target, skyline_upper_bound))
+
+        suburb_target = int(self.track_y - self.window_height * 0.08)
+        suburb_upper_bound = self.track_y - 20
+        suburb_base = min(suburb_target, suburb_upper_bound)
+        suburb_base = max(skyline_base + 36, suburb_base)
+        if suburb_base <= skyline_base:
+            suburb_base = skyline_base + 24
+
+        for building in self.buildings:
+            building.reposition(self.window_width, self.window_height, skyline_base)
+
+        for house in getattr(self, 'houses', []):
+            house.reposition(self.window_width, self.window_height, suburb_base)
+
+    def _build_stats_lines(self) -> List[str]:
+        score = getattr(self, 'score', 0)
+        high_score = getattr(self, 'high_score', 0)
+        current_index = getattr(self, 'current_train_index', 0)
+        track_trains = getattr(self, 'track_trains', [])
+        remaining = max(0, len(track_trains) - current_index)
+        level = getattr(self, 'level', 1)
+        correct = getattr(self, 'correct_matches', 0)
+        incorrect = getattr(self, 'incorrect_matches', 0)
+        accuracy = calculate_accuracy(correct, correct + incorrect)
+        combo = getattr(self, 'combo_count', 0)
+        best_combo = getattr(self, 'max_combo', 0)
+        return [
+            f"Score: {score}",
+            f"High Score: {high_score}",
+            f"Remaining: {remaining}",
+            f"Level: {level}",
+            f"Accuracy: {accuracy:.0f}%",
+            f"Combo: x{combo} (Best x{best_combo})"
+        ]
+
+    def _compute_scroll_rect(self, hud_rect: pygame.Rect, stats_lines: List[str], quote_lines: List[str]) -> pygame.Rect:
+        heading_height = self.hud_font.get_linesize() if hasattr(self, 'hud_font') else UI_LINE_HEIGHT
+        stats_line_height = self.timeline_font.get_linesize() if hasattr(self, 'timeline_font') else UI_LINE_HEIGHT
+        quote_line_height = self.quote_font.get_linesize() if hasattr(self, 'quote_font') else int(UI_LINE_HEIGHT * 0.9)
+        content_top = hud_rect.top + 16 + heading_height + 16
+        content_top += len(stats_lines) * stats_line_height
+        if quote_lines:
+            content_top += 12 + len(quote_lines) * quote_line_height
+        timeline_top = content_top + 12
+        inner_padding = 16
+        min_height = max(96, stats_line_height * 4)
+        available_height = hud_rect.bottom - inner_padding - timeline_top
+        if available_height < min_height:
+            timeline_top = max(hud_rect.top + heading_height + 32, hud_rect.bottom - inner_padding - min_height)
+            available_height = hud_rect.bottom - inner_padding - timeline_top
+        scroll_height = max(min_height, available_height)
+        scroll_width = max(80, hud_rect.width - inner_padding * 2)
+        return pygame.Rect(
+            hud_rect.left + inner_padding,
+            timeline_top,
+            scroll_width,
+            scroll_height
+        )
 
     def next_theme_label(self) -> str:
         return self.themes[(self.theme_index + 1) % len(self.themes)]['name']
@@ -1426,6 +1746,10 @@ class ModernGame(Game):
                 star.draw(screen)
         for layer in self.parallax_layers:
             layer.draw(screen)
+        for building in getattr(self, 'buildings', []):
+            building.draw(screen, self.uses_night_sky)
+        for house in getattr(self, 'houses', []):
+            house.draw(screen, self.uses_night_sky)
         for tree in self.trees:
             tree.draw(screen)
         for cloud in self.clouds:
@@ -1440,7 +1764,7 @@ class ModernGame(Game):
         screen.blit(title_surface, title_rect)
 
         quote_y = title_rect.bottom + 20
-        for line in self.quote_lines:
+        for line in self.menu_quote_lines:
             line_surface = self.quote_font.render(line, True, self.theme['secondary'])
             screen.blit(line_surface, (menu_panel.left + 40, quote_y))
             quote_y += self.quote_font.get_linesize()
@@ -1461,6 +1785,10 @@ class ModernGame(Game):
                 star.draw(screen)
         for layer in self.parallax_layers:
             layer.draw(screen)
+        for building in getattr(self, 'buildings', []):
+            building.draw(screen, self.uses_night_sky)
+        for house in getattr(self, 'houses', []):
+            house.draw(screen, self.uses_night_sky)
         for tree in self.trees:
             tree.draw(screen)
         for cloud in self.clouds:
@@ -1525,30 +1853,67 @@ class ModernGame(Game):
         hud_rect = self.layout['hud_rect']
         draw_glass_panel(screen, hud_rect, self.theme)
 
-        heading = self.hud_font.render("Mission Stats", True, self.theme['text'])
-        screen.blit(heading, (hud_rect.left + 20, hud_rect.top + 16))
-
+        stats_lines = self._build_stats_lines()
         stats_font = self.timeline_font
-        accuracy = calculate_accuracy(self.correct_matches, self.correct_matches + self.incorrect_matches)
-        stats_lines = [
-            f"Score: {self.score}",
-            f"High Score: {self.high_score}",
-            f"Remaining: {len(self.track_trains) - self.current_train_index}",
-            f"Level: {self.level}",
-            f"Accuracy: {accuracy:.0f}%",
-            f"Combo: x{self.combo_count} (Best x{self.max_combo})"
-        ]
-        y = hud_rect.top + 70
+        heading_surface = self.hud_font.render("Mission Stats", True, self.theme['text'])
+        heading_y = hud_rect.top + 16
+
+        quote_lines = list(self.quote_lines) if getattr(self, 'quote_lines', None) else []
+
+        text_padding = 8
+        stats_width = max((stats_font.size(line)[0] for line in stats_lines), default=0)
+        quote_width = max((self.quote_font.size(line)[0] for line in quote_lines), default=0) if quote_lines else 0
+        heading_width = heading_surface.get_width()
+        base_text_width = max(stats_width, quote_width, heading_width)
+        text_column_width = base_text_width + text_padding
+
+        available_width = hud_rect.width - 40
+        timeline_min_width = 180
+        column_gap = 24
+        two_column = available_width >= timeline_min_width + column_gap + text_column_width
+
+        timeline_rect = None
+        if two_column:
+            timeline_width = max(timeline_min_width, available_width - column_gap - text_column_width)
+            timeline_height = max(120, hud_rect.height - 32)
+            text_left = hud_rect.left + 20
+            text_right = text_left + text_column_width
+            timeline_right_limit = hud_rect.right - 20
+            timeline_left = max(text_right + column_gap, timeline_right_limit - timeline_width)
+            timeline_width = max(timeline_min_width, timeline_right_limit - timeline_left)
+            if timeline_width < timeline_min_width:
+                two_column = False
+            else:
+                timeline_rect = pygame.Rect(timeline_left, heading_y, timeline_width, timeline_height)
+                if timeline_rect.bottom > hud_rect.bottom - 16:
+                    timeline_rect.height = max(96, hud_rect.bottom - 16 - timeline_rect.top)
+                self.layout['scroll_rect'] = timeline_rect
+                if hasattr(self, 'timeline_font'):
+                    self.timeline_wrap_width = max(120, timeline_rect.width - 32)
+
+        if not two_column:
+            timeline_rect = self._compute_scroll_rect(hud_rect, stats_lines, quote_lines)
+            self.layout['scroll_rect'] = timeline_rect
+            if hasattr(self, 'timeline_font'):
+                self.timeline_wrap_width = max(120, timeline_rect.width - 32)
+
+        heading_pos = (hud_rect.left + 20, heading_y)
+        screen.blit(heading_surface, heading_pos)
+
+        y = heading_pos[1] + heading_surface.get_height() + 16
         for line in stats_lines:
             line_surface = stats_font.render(line, True, self.theme['text'])
-            screen.blit(line_surface, (hud_rect.left + 20, y))
+            screen.blit(line_surface, (heading_pos[0], y))
             y += stats_font.get_linesize()
 
-        y += 6
-        for line in self.quote_lines:
-            quote_surface = self.quote_font.render(line, True, self.theme['secondary'])
-            screen.blit(quote_surface, (hud_rect.left + 20, y))
-            y += self.quote_font.get_linesize()
+        if quote_lines:
+            y += 12
+            for line in quote_lines:
+                quote_surface = self.quote_font.render(line, True, self.theme['secondary'])
+                screen.blit(quote_surface, (heading_pos[0], y))
+                y += self.quote_font.get_linesize()
+
+        self.layout['hud_two_column'] = two_column
 
         self.draw_timeline(screen)
 
@@ -1600,7 +1965,7 @@ class ModernGame(Game):
     def handle_click(self, pos):
         if self.mute_button.is_clicked(pos):
             self.sound_manager.muted = not self.sound_manager.muted
-            self.mute_button.text = "🔈" if self.sound_manager.muted else "🔊"
+            self.update_mute_button_label()
             return True
 
         if self.theme_button.is_clicked(pos):
@@ -1685,6 +2050,8 @@ class ModernGame(Game):
                 for star in self.stars:
                     star.x = int(star.x * ratio_x)
                     star.y = int(star.y * ratio_y)
+
+        self.update_structures_layout()
 
     def handle_scroll(self, amount: int) -> None:
         max_offset = max(0, self.timeline_content_height - self.layout['scroll_rect'].height + 16)
@@ -1784,3 +2151,4 @@ if __name__ == '__main__':
         print(f"Error occurred: {e}")  # Print error
     finally:
         pygame.quit()  # Quit Pygame
+
